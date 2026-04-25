@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Timer</title>
+  <meta property="og:title" content="Timer">
+  <meta property="og:description" content="時計・ストップウォッチ・カウントダウンタイマー">
+  <meta property="og:type" content="website">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f0f13;
+      --surface: #1a1a24;
+      --surface2: #22222f;
+      --accent: #7c6bff;
+      --accent2: #ff6b9d;
+      --text: #f0f0f8;
+      --muted: #6b6b88;
+      --ring-size: 280px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 32px;
+      padding: 24px;
+    }
+
+    h1 {
+      font-size: 1.1rem;
+      font-weight: 500;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* Tab switcher */
+    .tabs {
+      display: flex;
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 4px;
+      gap: 4px;
+      width: 100%;
+      max-width: 420px;
+    }
+    .tab {
+      padding: 8px 0;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      border-radius: 9px;
+      cursor: pointer;
+      font-size: 0.78rem;
+      font-weight: 500;
+      transition: all 0.2s;
+      white-space: nowrap;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tab.active {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 2px 12px rgba(124,107,255,0.4);
+    }
+
+    /* Card */
+    .card {
+      background: var(--surface);
+      border-radius: 24px;
+      padding: 36px 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 28px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+      width: 100%;
+      max-width: 420px;
+    }
+
+    /* Ring */
+    .ring-wrap {
+      position: relative;
+      width: var(--ring-size);
+      height: var(--ring-size);
+    }
+    .ring-svg {
+      width: 100%;
+      height: 100%;
+      transform: rotate(-90deg);
+    }
+    .ring-bg { fill: none; stroke: var(--surface2); stroke-width: 8; }
+    .ring-progress {
+      fill: none;
+      stroke: url(#grad);
+      stroke-width: 8;
+      stroke-linecap: round;
+      transition: stroke-dashoffset 0.25s linear;
+    }
+    .ring-center {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+    .time-display {
+      font-size: 3.2rem;
+      font-weight: 300;
+      letter-spacing: 0.04em;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    .ms-display {
+      font-size: 1.2rem;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Lap list */
+    .lap-list {
+      width: 100%;
+      max-height: 140px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--surface2) transparent;
+    }
+    .lap-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 12px;
+      background: var(--surface2);
+      border-radius: 8px;
+      font-size: 0.85rem;
+      color: var(--muted);
+      animation: fadeIn 0.15s ease;
+    }
+    .lap-item span:last-child { color: var(--text); font-variant-numeric: tabular-nums; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; } }
+
+    /* Countdown input */
+    .time-inputs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .time-inputs input {
+      width: 64px;
+      background: var(--surface2);
+      border: 1px solid transparent;
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 2rem;
+      font-weight: 300;
+      text-align: center;
+      padding: 8px 4px;
+      outline: none;
+      transition: border-color 0.2s;
+      font-variant-numeric: tabular-nums;
+      -moz-appearance: textfield;
+    }
+    .time-inputs input::-webkit-outer-spin-button,
+    .time-inputs input::-webkit-inner-spin-button { -webkit-appearance: none; }
+    .time-inputs input:focus { border-color: var(--accent); }
+    .time-inputs .sep { font-size: 2rem; font-weight: 300; color: var(--muted); }
+    .input-label {
+      font-size: 0.65rem;
+      color: var(--muted);
+      text-align: center;
+      margin-top: 2px;
+    }
+    .input-group { display: flex; flex-direction: column; }
+
+    /* Buttons */
+    .btn-row { display: flex; gap: 10px; width: 100%; justify-content: center; }
+    .btn {
+      border: none;
+      border-radius: 14px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 13px 0;
+      transition: all 0.18s;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+      flex: 1;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 4px 16px rgba(124,107,255,0.35);
+      flex: 1.6;
+    }
+    .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary.running {
+      background: var(--accent2);
+      box-shadow: 0 4px 16px rgba(255,107,157,0.35);
+    }
+    .btn-secondary {
+      background: var(--surface2);
+      color: var(--muted);
+    }
+    .btn-secondary:hover { color: var(--text); background: #2c2c3d; }
+
+    /* Alert flash */
+    .card.alert-flash {
+      animation: flash 0.5s ease 3;
+    }
+    @keyframes flash {
+      0%,100% { box-shadow: 0 8px 40px rgba(0,0,0,0.4); }
+      50% { box-shadow: 0 0 60px rgba(255,107,157,0.6); }
+    }
+
+    /* Sections */
+    .panel { display: none; width: 100%; flex-direction: column; align-items: center; gap: 32px; }
+    .panel.active { display: flex; }
+  </style>
+</head>
+<body>
+  <h1>Timer</h1>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('clock')">時計</button>
+    <button class="tab" onclick="switchTab('stopwatch')">ストップウォッチ</button>
+    <button class="tab" onclick="switchTab('countdown')">カウントダウン</button>
+  </div>
+
+  <div class="card" id="card">
+    <!-- Clock -->
+    <div class="panel active" id="panel-clock">
+      <div class="ring-wrap">
+        <svg class="ring-svg" viewBox="0 0 280 280" id="analog-clock">
+          <defs>
+            <linearGradient id="grad3" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#7c6bff"/>
+              <stop offset="100%" stop-color="#ff6b9d"/>
+            </linearGradient>
+          </defs>
+          <!-- Clock face -->
+          <circle cx="140" cy="140" r="126" fill="none" stroke="#22222f" stroke-width="8"/>
+          <!-- Hour marks -->
+          <g id="hour-marks"></g>
+          <!-- Hands -->
+          <line id="hand-h" x1="140" y1="140" x2="140" y2="75" stroke="url(#grad3)" stroke-width="5" stroke-linecap="round"/>
+          <line id="hand-m" x1="140" y1="140" x2="140" y2="55" stroke="#f0f0f8" stroke-width="3" stroke-linecap="round"/>
+          <line id="hand-s" x1="140" y1="140" x2="140" y2="45" stroke="#ff6b9d" stroke-width="1.5" stroke-linecap="round"/>
+          <circle cx="140" cy="140" r="5" fill="#ff6b9d"/>
+        </svg>
+        <div class="ring-center" style="pointer-events:none">
+          <!-- intentionally empty - time shown below -->
+        </div>
+      </div>
+
+      <div style="text-align:center; display:flex; flex-direction:column; gap:6px; align-items:center;">
+        <div class="time-display" id="clock-time" style="font-size:2.8rem;">00:00:00</div>
+        <div id="clock-date" style="font-size:0.95rem; color:var(--muted); letter-spacing:0.05em;"></div>
+      </div>
+    </div>
+
+    <!-- Stopwatch -->
+    <div class="panel" id="panel-stopwatch">
+      <div class="ring-wrap">
+        <svg class="ring-svg" viewBox="0 0 280 280">
+          <defs>
+            <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#7c6bff"/>
+              <stop offset="100%" stop-color="#ff6b9d"/>
+            </linearGradient>
+          </defs>
+          <circle class="ring-bg" cx="140" cy="140" r="126"/>
+          <circle class="ring-progress" id="sw-ring" cx="140" cy="140" r="126"
+            stroke-dasharray="792" stroke-dashoffset="792"/>
+        </svg>
+        <div class="ring-center">
+          <div class="time-display" id="sw-display">00:00</div>
+          <div class="ms-display" id="sw-ms">.00</div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="sw-btn" onclick="swToggle()">スタート</button>
+        <button class="btn btn-secondary" id="sw-lap-btn" onclick="swLap()">ラップ</button>
+        <button class="btn btn-secondary" onclick="swReset()">リセット</button>
+      </div>
+
+      <div class="lap-list" id="lap-list"></div>
+    </div>
+
+    <!-- Countdown -->
+    <div class="panel" id="panel-countdown">
+      <div class="ring-wrap">
+        <svg class="ring-svg" viewBox="0 0 280 280">
+          <defs>
+            <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#7c6bff"/>
+              <stop offset="100%" stop-color="#ff6b9d"/>
+            </linearGradient>
+          </defs>
+          <circle class="ring-bg" cx="140" cy="140" r="126"/>
+          <circle class="ring-progress" id="cd-ring" cx="140" cy="140" r="126"
+            stroke-dasharray="792" stroke-dashoffset="0"
+            style="stroke: url(#grad2)"/>
+        </svg>
+        <div class="ring-center">
+          <div class="time-display" id="cd-display">00:00</div>
+          <div class="ms-display" id="cd-ms">.00</div>
+        </div>
+      </div>
+
+      <div class="time-inputs" id="cd-inputs">
+        <div class="input-group">
+          <input type="number" id="cd-h" min="0" max="99" value="0" placeholder="00" oninput="cdInputChange()">
+          <div class="input-label">時間</div>
+        </div>
+        <div class="sep">:</div>
+        <div class="input-group">
+          <input type="number" id="cd-m" min="0" max="59" value="5" placeholder="00" oninput="cdInputChange()">
+          <div class="input-label">分</div>
+        </div>
+        <div class="sep">:</div>
+        <div class="input-group">
+          <input type="number" id="cd-s" min="0" max="59" value="0" placeholder="00" oninput="cdInputChange()">
+          <div class="input-label">秒</div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="cd-btn" onclick="cdToggle()">スタート</button>
+        <button class="btn btn-secondary" onclick="cdReset()">リセット</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ---- Tab ----
+    function switchTab(name) {
+      document.querySelectorAll('.tab').forEach((t, i) => {
+        t.classList.toggle('active', ['clock','stopwatch','countdown'][i] === name);
+      });
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.getElementById('panel-' + name).classList.add('active');
+    }
+
+    // ---- Clock (JST) ----
+    const weekdays = ['日','月','火','水','木','金','土'];
+
+    function getJST() {
+      // JST = UTC+9
+      const now = new Date();
+      const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+      return new Date(utc + 9 * 3600000);
+    }
+
+    function updateClock() {
+      const jst = getJST();
+      const h = jst.getHours(), m = jst.getMinutes(), s = jst.getSeconds(), ms = jst.getMilliseconds();
+
+      // Digital
+      document.getElementById('clock-time').textContent =
+        `${pad(h)}:${pad(m)}:${pad(s)}`;
+      const y = jst.getFullYear(), mo = jst.getMonth()+1, d = jst.getDate();
+      document.getElementById('clock-date').textContent =
+        `${y}年${mo}月${d}日（${weekdays[jst.getDay()]}）`;
+
+      // Analog hands
+      const secDeg  = (s + ms/1000) * 6;
+      const minDeg  = (m + s/60) * 6;
+      const hourDeg = ((h % 12) + m/60) * 30;
+
+      rotateHand('hand-s', secDeg);
+      rotateHand('hand-m', minDeg);
+      rotateHand('hand-h', hourDeg);
+    }
+
+    function rotateHand(id, deg) {
+      const el = document.getElementById(id);
+      // rotate around center (140,140)
+      el.setAttribute('transform', `rotate(${deg}, 140, 140)`);
+    }
+
+    // Draw hour tick marks
+    (function drawMarks() {
+      const g = document.getElementById('hour-marks');
+      for (let i = 0; i < 12; i++) {
+        const angle = i * 30;
+        const rad = (angle - 90) * Math.PI / 180;
+        const outer = 126, inner = i % 3 === 0 ? 112 : 118;
+        const x1 = 140 + outer * Math.cos(rad);
+        const y1 = 140 + outer * Math.sin(rad);
+        const x2 = 140 + inner * Math.cos(rad);
+        const y2 = 140 + inner * Math.sin(rad);
+        const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+        line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+        line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+        line.setAttribute('stroke', i % 3 === 0 ? '#6b6b88' : '#3a3a50');
+        line.setAttribute('stroke-width', i % 3 === 0 ? '2.5' : '1.5');
+        line.setAttribute('stroke-linecap', 'round');
+        g.appendChild(line);
+      }
+    })();
+
+    updateClock();
+    setInterval(updateClock, 200);
+
+    // ---- Stopwatch ----
+    let swRunning = false, swStart = 0, swElapsed = 0, swRaf = null;
+    let lapTimes = [], lastLap = 0;
+    const circumference = 2 * Math.PI * 126;
+
+    function swToggle() {
+      if (!swRunning) {
+        swRunning = true;
+        swStart = performance.now() - swElapsed;
+        swRaf = requestAnimationFrame(swTick);
+        document.getElementById('sw-btn').textContent = '一時停止';
+        document.getElementById('sw-btn').classList.add('running');
+      } else {
+        swRunning = false;
+        cancelAnimationFrame(swRaf);
+        document.getElementById('sw-btn').textContent = 'スタート';
+        document.getElementById('sw-btn').classList.remove('running');
+      }
+    }
+
+    function swTick(now) {
+      swElapsed = now - swStart;
+      renderSw(swElapsed);
+      swRaf = requestAnimationFrame(swTick);
+    }
+
+    function renderSw(ms) {
+      const total = Math.floor(ms);
+      const h = Math.floor(total / 3600000);
+      const m = Math.floor((total % 3600000) / 60000);
+      const s = Math.floor((total % 60000) / 1000);
+      const cs = Math.floor((total % 1000) / 10);
+      const disp = h > 0
+        ? `${pad(h)}:${pad(m)}:${pad(s)}`
+        : `${pad(m)}:${pad(s)}`;
+      document.getElementById('sw-display').textContent = disp;
+      document.getElementById('sw-ms').textContent = '.' + pad(cs);
+      // ring: every 60 seconds = full rotation
+      const progress = (total % 60000) / 60000;
+      document.getElementById('sw-ring').style.strokeDashoffset =
+        circumference * (1 - progress);
+    }
+
+    function swLap() {
+      if (!swRunning && swElapsed === 0) return;
+      const lapTime = swElapsed - lastLap;
+      lastLap = swElapsed;
+      lapTimes.unshift({ n: lapTimes.length + 1, t: lapTime });
+      const list = document.getElementById('lap-list');
+      const item = document.createElement('div');
+      item.className = 'lap-item';
+      item.innerHTML = `<span>Lap ${lapTimes[0].n}</span><span>${formatLap(lapTime)}</span>`;
+      list.prepend(item);
+    }
+
+    function swReset() {
+      swRunning = false;
+      cancelAnimationFrame(swRaf);
+      swElapsed = 0; lastLap = 0;
+      lapTimes = [];
+      document.getElementById('lap-list').innerHTML = '';
+      document.getElementById('sw-btn').textContent = 'スタート';
+      document.getElementById('sw-btn').classList.remove('running');
+      renderSw(0);
+    }
+
+    function formatLap(ms) {
+      const m = Math.floor(ms / 60000);
+      const s = Math.floor((ms % 60000) / 1000);
+      const cs = Math.floor((ms % 1000) / 10);
+      return `${pad(m)}:${pad(s)}.${pad(cs)}`;
+    }
+
+    // ---- Countdown ----
+    let cdRunning = false, cdStart = 0, cdRemaining = 0, cdTotal = 0, cdRaf2 = null;
+
+    function cdGetInput() {
+      const h = parseInt(document.getElementById('cd-h').value) || 0;
+      const m = parseInt(document.getElementById('cd-m').value) || 0;
+      const s = parseInt(document.getElementById('cd-s').value) || 0;
+      return (h * 3600 + m * 60 + s) * 1000;
+    }
+
+    function cdInputChange() {
+      if (!cdRunning) {
+        cdTotal = cdGetInput();
+        cdRemaining = cdTotal;
+        renderCd(cdRemaining, cdTotal);
+      }
+    }
+
+    function cdToggle() {
+      if (cdRemaining === 0 && !cdRunning) {
+        cdTotal = cdGetInput();
+        cdRemaining = cdTotal;
+      }
+      if (cdRemaining <= 0) return;
+
+      if (!cdRunning) {
+        cdRunning = true;
+        cdStart = performance.now();
+        cdRaf2 = requestAnimationFrame(cdTick);
+        document.getElementById('cd-btn').textContent = '一時停止';
+        document.getElementById('cd-btn').classList.add('running');
+        document.getElementById('cd-inputs').style.pointerEvents = 'none';
+        document.getElementById('cd-inputs').style.opacity = '0.4';
+      } else {
+        cdRunning = false;
+        cancelAnimationFrame(cdRaf2);
+        document.getElementById('cd-btn').textContent = 'スタート';
+        document.getElementById('cd-btn').classList.remove('running');
+        document.getElementById('cd-inputs').style.pointerEvents = '';
+        document.getElementById('cd-inputs').style.opacity = '';
+      }
+    }
+
+    function cdTick(now) {
+      const elapsed = now - cdStart;
+      cdStart = now;
+      cdRemaining = Math.max(0, cdRemaining - elapsed);
+      renderCd(cdRemaining, cdTotal);
+
+      if (cdRemaining <= 0) {
+        cdRunning = false;
+        document.getElementById('cd-btn').textContent = 'スタート';
+        document.getElementById('cd-btn').classList.remove('running');
+        document.getElementById('cd-inputs').style.pointerEvents = '';
+        document.getElementById('cd-inputs').style.opacity = '';
+        alertFinished();
+        return;
+      }
+      cdRaf2 = requestAnimationFrame(cdTick);
+    }
+
+    function renderCd(ms, total) {
+      const t = Math.ceil(ms);
+      const h = Math.floor(t / 3600000);
+      const m = Math.floor((t % 3600000) / 60000);
+      const s = Math.floor((t % 60000) / 1000);
+      const cs = Math.floor((ms % 1000) / 10);
+      const disp = h > 0
+        ? `${pad(h)}:${pad(m)}:${pad(s)}`
+        : `${pad(m)}:${pad(s)}`;
+      document.getElementById('cd-display').textContent = disp;
+      document.getElementById('cd-ms').textContent = '.' + pad(Math.floor(cs));
+      const progress = total > 0 ? ms / total : 0;
+      document.getElementById('cd-ring').style.strokeDashoffset =
+        circumference * (1 - progress);
+    }
+
+    function cdReset() {
+      cdRunning = false;
+      cancelAnimationFrame(cdRaf2);
+      document.getElementById('cd-btn').textContent = 'スタート';
+      document.getElementById('cd-btn').classList.remove('running');
+      document.getElementById('cd-inputs').style.pointerEvents = '';
+      document.getElementById('cd-inputs').style.opacity = '';
+      cdTotal = cdGetInput();
+      cdRemaining = cdTotal;
+      renderCd(cdRemaining, cdTotal);
+    }
+
+    function alertFinished() {
+      document.getElementById('card').classList.add('alert-flash');
+      setTimeout(() => document.getElementById('card').classList.remove('alert-flash'), 1600);
+      try {
+        const ctx = new AudioContext();
+        [0, 0.15, 0.3].forEach(delay => {
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.connect(g); g.connect(ctx.destination);
+          o.frequency.value = 880;
+          o.type = 'sine';
+          g.gain.setValueAtTime(0, ctx.currentTime + delay);
+          g.gain.linearRampToValueAtTime(0.3, ctx.currentTime + delay + 0.01);
+          g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.4);
+          o.start(ctx.currentTime + delay);
+          o.stop(ctx.currentTime + delay + 0.4);
+        });
+      } catch(e) {}
+    }
+
+    function pad(n) { return String(n).padStart(2, '0'); }
+
+    // Init
+    cdInputChange();
+    renderSw(0);
+  </script>
+</body>
+</html>
