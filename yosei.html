@@ -291,8 +291,30 @@
       </div>
     </section>
 
+    <section class="step" id="dose-table-step" style="display:none">
+      <h2>④ 有効な用量（約束処方表）を設定</h2>
+      <div class="hint">ここに登録した薬剤・用量だけを予製の集計対象にします。表に無い薬剤や用量（個別に量を調整した分など）は結果から除外されます。</div>
+      <label class="row" style="cursor:pointer; margin-top:10px;">
+        <input type="checkbox" id="dose-filter-toggle" checked>
+        <span class="hint" style="margin:0;">表にある用量だけを対象にする</span>
+      </label>
+      <div id="dose-table-editor" style="display:flex; flex-direction:column; gap:14px; margin-top:14px;">
+        <div class="band-table-wrap">
+          <table class="band-table" id="dose-master-table">
+            <thead><tr id="dose-master-thead"></tr></thead>
+            <tbody id="dose-master-tbody"></tbody>
+          </table>
+        </div>
+        <div class="row" style="gap:10px;">
+          <button class="band-add-row-btn" id="dose-add-band-btn" type="button">＋ 体重帯を追加</button>
+          <select id="dose-add-drug-select" style="margin-left:auto;"></select>
+          <button class="band-add-row-btn" id="dose-add-drug-btn" type="button">＋ 薬剤を追加</button>
+        </div>
+      </div>
+    </section>
+
     <section class="step" id="settings-step" style="display:none">
-      <h2>④ 安全係数を選んで計算</h2>
+      <h2>⑤ 安全係数を選んで計算</h2>
       <select id="safety-preset">
         <option value="1.65">欠品をほぼゼロにしたい（欠品率の目安 約5%）</option>
         <option value="1.28" selected>バランス重視（標準・推奨）</option>
@@ -305,7 +327,7 @@
     </section>
 
     <section class="step" id="result-step" style="display:none">
-      <h2>⑤ 結果</h2>
+      <h2>⑥ 結果</h2>
       <div class="hint" id="result-summary"></div>
       <div class="table-wrap">
         <table id="result-table">
@@ -588,6 +610,7 @@
       fillSelect('map-dose', headers, doseGuess, false);
       fillSelect('map-usage', headers, usageGuess, true);
       refreshSetAvailability();
+      refreshDoseTableAvailability();
     }
 
     // Extracts a dosing frequency ("分1"/"分2"/"分3"...) from free-text 用法
@@ -734,6 +757,8 @@
     document.getElementById('map-drug').addEventListener('change', refreshSetAvailability);
     document.getElementById('map-dose').addEventListener('change', refreshSetAvailability);
     document.getElementById('map-usage').addEventListener('change', () => renderSetCards());
+    document.getElementById('map-drug').addEventListener('change', refreshDoseTableAvailability);
+    document.getElementById('map-dose').addEventListener('change', refreshDoseTableAvailability);
 
     document.getElementById('set-mode-toggle').addEventListener('change', () => {
       document.getElementById('set-editor').style.display =
@@ -917,6 +942,149 @@
       return outer;
     }
 
+    // ---------- master dose allowlist (約束処方表) ----------
+    // Restricts every calculation (both set-matching and individual
+    // per-drug aggregation) to a fixed table of "official" doses per drug —
+    // the standard weight-band amounts a clinic actually pre-compounds —
+    // so one-off individualized doses never show up as a recommended 予製.
+    let doseTable = [];        // [{ drug, bands: [doseStr, ...] }]
+    let doseBandCount = 4;
+    let doseTableInitialized = false;
+    let lastDoseTableDrugCol = null, lastDoseTableDoseCol = null;
+
+    const OFFICIAL_DOSE_BANDS = [
+      { re: /カルボシステイン/, bands: [0.45, 0.6, 0.9, 1.2] },
+      { re: /アンブロキソール/, bands: [0.45, 0.6, 0.9, 1.2] },
+      { re: /アスベリン/, bands: [0.15, 0.2, 0.3, 0.4] },
+      { re: /ホクナリン/, bands: [0.3, 0.4, 0.6, 0.8] },
+      { re: /トランサミン/, bands: [0.45, 0.6, 0.9, 1.2] },
+      { re: /ミヤ.?[BbＢ][MmＭ]/, bands: [0.7, 1.0, 1.5, 2.0] },
+      { re: /カロナール/, bands: [null, 0.75, 1.0, 1.25] },
+      { re: /ナウゼリン/, bands: [null, null, 0.5, 0.6] },
+    ];
+
+    function findClosestDoseString(drugName, targetGram) {
+      if (targetGram === null || targetGram === undefined) return '';
+      let best = '', bestDiff = Infinity;
+      sortedDistinctDoses(drugName).forEach(d => {
+        const v = parseNumeric(d);
+        if (v === null) return;
+        const diff = Math.abs(v - targetGram);
+        if (diff < bestDiff) { bestDiff = diff; best = d; }
+      });
+      return bestDiff <= 0.005 ? best : '';
+    }
+
+    function autoSeedDoseTable() {
+      const names = getDistinctDrugs().map(d => d.name);
+      doseTable = [];
+      doseBandCount = 4;
+      OFFICIAL_DOSE_BANDS.forEach(spec => {
+        const drug = names.find(n => spec.re.test(n));
+        if (!drug) return;
+        const bands = spec.bands.map(g => g === null ? '' : findClosestDoseString(drug, g));
+        doseTable.push({ drug, bands });
+      });
+    }
+
+    function refreshDoseTableAvailability() {
+      const drugCol = document.getElementById('map-drug').value;
+      const doseCol = document.getElementById('map-dose').value;
+      const step = document.getElementById('dose-table-step');
+      if (!drugCol || !doseCol) { step.style.display = 'none'; return; }
+      step.style.display = 'block';
+      if (!doseTableInitialized || drugCol !== lastDoseTableDrugCol || doseCol !== lastDoseTableDoseCol) {
+        lastDoseTableDrugCol = drugCol; lastDoseTableDoseCol = doseCol;
+        autoSeedDoseTable();
+        doseTableInitialized = true;
+      }
+      renderDoseTable();
+    }
+
+    document.getElementById('dose-filter-toggle').addEventListener('change', () => {
+      document.getElementById('dose-table-editor').style.display =
+        document.getElementById('dose-filter-toggle').checked ? 'flex' : 'none';
+    });
+
+    document.getElementById('dose-add-band-btn').addEventListener('click', () => {
+      doseBandCount++;
+      doseTable.forEach(row => { row.bands.push(''); });
+      renderDoseTable();
+    });
+
+    document.getElementById('dose-add-drug-btn').addEventListener('click', () => {
+      const sel = document.getElementById('dose-add-drug-select');
+      const drug = sel.value;
+      if (!drug || doseTable.some(r => r.drug === drug)) return;
+      doseTable.push({ drug, bands: new Array(doseBandCount).fill('') });
+      renderDoseTable();
+    });
+
+    function renderDoseTable() {
+      const thead = document.getElementById('dose-master-thead');
+      const tbody = document.getElementById('dose-master-tbody');
+      thead.innerHTML = '';
+      tbody.innerHTML = '';
+
+      const thDrug = document.createElement('th'); thDrug.textContent = '薬剤名';
+      thead.appendChild(thDrug);
+      for (let i = 0; i < doseBandCount; i++) {
+        const th = document.createElement('th'); th.textContent = `帯${i + 1}`;
+        thead.appendChild(th);
+      }
+      thead.appendChild(document.createElement('th'));
+
+      doseTable.forEach(row => {
+        while (row.bands.length < doseBandCount) row.bands.push('');
+        const tr = document.createElement('tr');
+        const tdDrug = document.createElement('td'); tdDrug.textContent = row.drug;
+        tdDrug.style.fontWeight = '600';
+        tr.appendChild(tdDrug);
+
+        const freq = doseFreqForDrug(row.drug);
+        const doses = [...freq.keys()].sort((a, b) => (parseNumeric(a) ?? 0) - (parseNumeric(b) ?? 0));
+
+        row.bands.forEach((val, i) => {
+          const td = document.createElement('td');
+          const sel = document.createElement('select');
+          const optBlank = document.createElement('option');
+          optBlank.value = ''; optBlank.textContent = '(対象外)';
+          sel.appendChild(optBlank);
+          doses.forEach(dose => {
+            const opt = document.createElement('option');
+            opt.value = dose;
+            opt.textContent = `${dose} (${freq.get(dose)}件)`;
+            if (val === dose) opt.selected = true;
+            sel.appendChild(opt);
+          });
+          sel.addEventListener('change', () => { row.bands[i] = sel.value; });
+          td.appendChild(sel);
+          tr.appendChild(td);
+        });
+
+        const tdRemove = document.createElement('td');
+        const btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'band-row-remove'; btn.textContent = '×';
+        btn.title = 'この薬剤を表から削除';
+        btn.addEventListener('click', () => {
+          doseTable = doseTable.filter(r => r !== row);
+          renderDoseTable();
+        });
+        tdRemove.appendChild(btn);
+        tr.appendChild(tdRemove);
+        tbody.appendChild(tr);
+      });
+
+      const addDrugSelect = document.getElementById('dose-add-drug-select');
+      addDrugSelect.innerHTML = '';
+      const already = new Set(doseTable.map(r => r.drug));
+      getDistinctDrugs().filter(d => !already.has(d.name)).forEach(({ name, count }) => {
+        const opt = document.createElement('option');
+        opt.value = name; opt.textContent = `${name} (${count}件)`;
+        addDrugSelect.appendChild(opt);
+      });
+    }
+
     // ---------- safety factor ----------
     const safetyPreset = document.getElementById('safety-preset');
     const safetyCustom = document.getElementById('safety-custom');
@@ -955,7 +1123,14 @@
 
       const z = getZ();
       let minDate = null, maxDate = null;
-      let validCount = 0, skipped = 0;
+      let validCount = 0, skipped = 0, filteredOut = 0;
+
+      const doseFilterOn = document.getElementById('dose-filter-toggle').checked;
+      const doseAllowlist = new Map(); // drug -> Set(allowed dose strings)
+      doseTable.forEach(row => {
+        const allowed = new Set(row.bands.filter(b => b));
+        if (allowed.size) doseAllowlist.set(row.drug, allowed);
+      });
 
       // Index every valid row by date + drug + dose + (days,unit), keeping counts
       // rather than row objects. This lets set-matching "consume" instances by
@@ -983,6 +1158,10 @@
         const dose = String(r[doseCol] ?? '').trim();
 
         if (!d || !countInfo || !drug || !dose) { skipped++; return; }
+        if (doseFilterOn) {
+          const allowed = doseAllowlist.get(drug);
+          if (!allowed || !allowed.has(dose)) { filteredOut++; return; }
+        }
         validCount++;
 
         if (!minDate || d < minDate) minDate = d;
@@ -1117,9 +1296,10 @@
       });
 
       const skippedNote = skipped > 0 ? `（日時・処方日数(回数)・薬剤名・用量が不明な${skipped}件を除外）` : '';
+      const filterNote = doseFilterOn && filteredOut > 0 ? `（約束処方表に無い用量を${filteredOut}件除外）` : '';
       const setNote = setModeOn && setInstanceTotal > 0 ? ` ｜ セット一致件数: ${setInstanceTotal}件` : '';
       summaryEl.textContent =
-        `対象期間: ${dateStr(minDate)} 〜 ${dateStr(maxDate)}（${totalWeeks}週間） ｜ 集計パターン数: ${currentResults.length} ｜ 読み込み件数: ${validCount}件${setNote} ${skippedNote}`;
+        `対象期間: ${dateStr(minDate)} 〜 ${dateStr(maxDate)}（${totalWeeks}週間） ｜ 集計パターン数: ${currentResults.length} ｜ 読み込み件数: ${validCount}件${setNote} ${skippedNote}${filterNote}`;
 
       resultStep.style.display = 'block';
       sortState = { key: 'rec', asc: false };
