@@ -190,17 +190,22 @@
       </div>
       <div class="hint" id="file-info"></div>
       <div class="hint">CSVはUTF-8形式で保存してください（文字化けする場合はExcel形式 .xlsx でお試しください）。</div>
+      <label class="row" id="no-header-row" style="display:none; cursor:pointer;">
+        <input type="checkbox" id="no-header-toggle">
+        <span class="hint" style="margin:0;">先頭行が見出し（列名）ではなく、データ行として使う</span>
+      </label>
     </section>
 
     <section class="step" id="mapping-step" style="display:none">
       <h2>② 列の対応を確認</h2>
+      <div class="hint">見出しが無い場合は各列のサンプル値を表示しているので、内容を見て選んでください。</div>
       <div class="mapping-grid">
         <div>
           <label>日時</label>
           <select id="map-date"></select>
         </div>
         <div>
-          <label>処方日数</label>
+          <label>処方日数・回数（例: 5日分／3回分）</label>
           <select id="map-days"></select>
         </div>
         <div>
@@ -237,11 +242,11 @@
               <th data-key="drug">薬剤名</th>
               <th data-key="dose">用量(体重帯)</th>
               <th data-key="weeks">処方があった週</th>
-              <th data-key="mean">週平均日数</th>
+              <th data-key="mean">週平均</th>
               <th data-key="std">標準偏差</th>
               <th data-key="max">週最大</th>
               <th data-key="min">週最小</th>
-              <th data-key="rec" class="sorted">推奨予製量(日/週)</th>
+              <th data-key="rec" class="sorted">推奨予製量(週あたり)</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -305,6 +310,20 @@
       if (!s) return null;
       const n = parseFloat(s);
       return isNaN(n) ? null : n;
+    }
+
+    // Parses values like "5日分" (regular drugs) or "3回分" (頓服/PRN drugs, dosed
+    // by count rather than days) into a number + unit. Falls back to a bare
+    // number with no unit (unit '') for plain numeric "処方日数" columns.
+    function parseCountWithUnit(v) {
+      if (v === null || v === undefined) return null;
+      if (typeof v === 'number' && isFinite(v)) return { value: v, unit: '' };
+      const s = String(v).trim();
+      if (!s) return null;
+      const m = s.match(/([\d]+(?:\.[\d]+)?)\s*(日|回)/);
+      if (m) return { value: parseFloat(m[1]), unit: m[2] };
+      const n = parseNumeric(s);
+      return n === null ? null : { value: n, unit: '' };
     }
 
     function mondayOf(date) {
@@ -392,11 +411,42 @@
 
     sheetSelect.addEventListener('change', () => loadSheet(sheetSelect.value));
 
+    function excelColLetter(idx) {
+      let s = '', n = idx + 1;
+      while (n > 0) {
+        const rem = (n - 1) % 26;
+        s = String.fromCharCode(65 + rem) + s;
+        n = Math.floor((n - 1) / 26);
+      }
+      return s;
+    }
+
+    let currentAoa = [];       // raw rows-of-arrays for the loaded sheet
+    let columnPreviews = {};   // header -> "sample1, sample2, sample3"
+    const noHeaderToggle = document.getElementById('no-header-toggle');
+    const noHeaderRow = document.getElementById('no-header-row');
+
+    function cellToStr(v) {
+      if (v instanceof Date && !isNaN(v)) return dateStr(v);
+      return String(v ?? '').trim();
+    }
+
     function loadSheet(sheetName) {
       const ws = workbook.Sheets[sheetName];
-      const headerRow = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })[0] || [];
-      headers = headerRow.map(h => String(h).trim()).filter(h => h !== '');
-      rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      currentAoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      if (!currentAoa.length) {
+        fileInfo.classList.add('error');
+        fileInfo.textContent = 'データが見つかりませんでした。';
+        return;
+      }
+
+      const firstRow = currentAoa[0];
+      const looksLikeHeader = firstRow.some(c => cellToStr(c) !== '');
+      noHeaderRow.style.display = 'flex';
+      noHeaderToggle.checked = !looksLikeHeader;
+
+      buildRowsFromAoa();
 
       fileInfo.classList.remove('error');
       fileInfo.textContent = `${rows.length}行を読み込みました（列: ${headers.join(' / ')}）`;
@@ -407,9 +457,55 @@
       document.getElementById('result-step').style.display = 'none';
     }
 
+    noHeaderToggle.addEventListener('change', () => {
+      if (!currentAoa.length) return;
+      buildRowsFromAoa();
+      fileInfo.classList.remove('error');
+      fileInfo.textContent = `${rows.length}行を読み込みました（列: ${headers.join(' / ')}）`;
+      populateMapping();
+    });
+
+    // Builds `rows` (array of {header: value}) and `headers` from currentAoa,
+    // honoring the "先頭行は見出しではない" toggle. Column alignment is kept
+    // by position (not by relying on sheet_to_json's implicit header mapping),
+    // so a blank or missing header cell never drops or shifts a column.
+    function buildRowsFromAoa() {
+      const treatFirstAsHeader = !noHeaderToggle.checked;
+      const numCols = currentAoa.reduce((m, r) => Math.max(m, r.length), 0);
+      const firstRow = currentAoa[0] || [];
+
+      const seen = new Map();
+      headers = [];
+      for (let i = 0; i < numCols; i++) {
+        let label = treatFirstAsHeader ? cellToStr(firstRow[i]) : '';
+        if (!label) label = `列${excelColLetter(i)}`;
+        const n = (seen.get(label) || 0) + 1;
+        seen.set(label, n);
+        headers.push(n > 1 ? `${label}(${excelColLetter(i)})` : label);
+      }
+
+      const dataRows = treatFirstAsHeader ? currentAoa.slice(1) : currentAoa;
+      rows = dataRows.map(r => {
+        const obj = {};
+        headers.forEach((h, i) => { obj[h] = r[i] !== undefined ? r[i] : ''; });
+        return obj;
+      });
+
+      columnPreviews = {};
+      headers.forEach((h, i) => {
+        const vals = [];
+        for (const r of dataRows) {
+          const s = cellToStr(r[i]);
+          if (s !== '' && !vals.includes(s)) vals.push(s);
+          if (vals.length >= 3) break;
+        }
+        columnPreviews[h] = vals.join(' / ');
+      });
+    }
+
     function populateMapping() {
       const dateGuess = guessColumn(headers, ['日時', '日付', '処方日', '調剤日', '受付日']);
-      const daysGuess = guessColumn(headers, ['処方日数', '日数']);
+      const daysGuess = guessColumn(headers, ['処方日数', '日数', '回数']);
       const drugGuess = guessColumn(headers, ['処方内容', '薬剤名', '薬品名', '品名']);
       const doseGuess = guessColumn(headers, ['用量', '容量', '分量']);
 
@@ -433,7 +529,9 @@
       }
       opts.forEach(h => {
         const opt = document.createElement('option');
-        opt.value = h; opt.textContent = h;
+        opt.value = h;
+        const preview = columnPreviews[h];
+        opt.textContent = preview ? `${h}　例: ${preview}` : h;
         if (h === selected) opt.selected = true;
         sel.appendChild(opt);
       });
@@ -476,18 +574,18 @@
 
       const z = getZ();
       // group key = drug + dose（＝薬剤×体重帯のパターン単位。1つの予製バッグに相当）
-      const groupWeekSums = new Map();   // "drug|dose" -> Map(weekKey -> sum days)
-      const groupMeta = new Map();       // "drug|dose" -> {drug, dose}
+      const groupWeekSums = new Map();   // "drug|dose" -> Map(weekKey -> sum count)
+      const groupMeta = new Map();       // "drug|dose" -> {drug, dose, units: Set}
       let minDate = null, maxDate = null;
       let validCount = 0, skipped = 0;
 
       rows.forEach(r => {
         const d = parseFlexibleDate(r[dateCol]);
-        const days = parseNumeric(r[daysCol]);
+        const countInfo = parseCountWithUnit(r[daysCol]);
         const drug = String(r[drugCol] ?? '').trim();
         const dose = String(r[doseCol] ?? '').trim();
 
-        if (!d || days === null || !drug || !dose) { skipped++; return; }
+        if (!d || !countInfo || !drug || !dose) { skipped++; return; }
         validCount++;
 
         if (!minDate || d < minDate) minDate = d;
@@ -497,10 +595,11 @@
         const key = drug + '|' + dose;
         if (!groupWeekSums.has(key)) {
           groupWeekSums.set(key, new Map());
-          groupMeta.set(key, { drug, dose });
+          groupMeta.set(key, { drug, dose, units: new Set() });
         }
         const wkMap = groupWeekSums.get(key);
-        wkMap.set(wk, (wkMap.get(wk) || 0) + days);
+        wkMap.set(wk, (wkMap.get(wk) || 0) + countInfo.value);
+        if (countInfo.unit) groupMeta.get(key).units.add(countInfo.unit);
       });
 
       if (!minDate || !maxDate || groupWeekSums.size === 0) {
@@ -523,7 +622,7 @@
 
       currentResults = [];
       groupWeekSums.forEach((wkMap, key) => {
-        const { drug, dose } = groupMeta.get(key);
+        const { drug, dose, units } = groupMeta.get(key);
         const values = weeks.map(w => wkMap.get(w) || 0);
         const n = values.length;
         const sum = values.reduce((a, b) => a + b, 0);
@@ -534,15 +633,18 @@
         const min = Math.min(...values);
         const rec = Math.max(0, Math.ceil(mean + z * std));
         const nonzeroWeeks = values.filter(v => v > 0).length;
+        // unit: "日" (regular scheduled drugs) or "回" (頓服/PRN, dosed by count).
+        // Falls back to "日" for plain numeric columns with no unit text at all.
+        const unit = units.size === 1 ? [...units][0] : (units.size === 0 ? '日' : '混在');
 
         currentResults.push({
-          drug, doseDisplay: dose,
+          drug, doseDisplay: dose, unit,
           nonzeroWeeks, totalWeeks,
           mean, std, max, min, rec
         });
       });
 
-      const skippedNote = skipped > 0 ? `（日時・処方日数・薬剤名・用量が不明な${skipped}件を除外）` : '';
+      const skippedNote = skipped > 0 ? `（日時・処方日数(回数)・薬剤名・用量が不明な${skipped}件を除外）` : '';
       summaryEl.textContent =
         `対象期間: ${dateStr(minDate)} 〜 ${dateStr(maxDate)}（${totalWeeks}週間） ｜ 薬剤×用量パターン数: ${currentResults.length} ｜ 読み込み件数: ${validCount}件 ${skippedNote}`;
 
@@ -598,13 +700,18 @@
         if (lowConfidence) tdWeeks.classList.add('low-conf');
         if (lowConfidence) tdWeeks.title = 'データが少なく精度が低い可能性があります';
 
-        const tdMean = document.createElement('td'); tdMean.textContent = fmt(r.mean);
+        const unitSuffix = r.unit === '混在' ? '' : r.unit;
+        const tdMean = document.createElement('td'); tdMean.textContent = fmt(r.mean) + unitSuffix;
         const tdStd = document.createElement('td'); tdStd.textContent = fmt(r.std);
-        const tdMax = document.createElement('td'); tdMax.textContent = fmt(r.max);
-        const tdMin = document.createElement('td'); tdMin.textContent = fmt(r.min);
+        const tdMax = document.createElement('td'); tdMax.textContent = fmt(r.max) + unitSuffix;
+        const tdMin = document.createElement('td'); tdMin.textContent = fmt(r.min) + unitSuffix;
 
         const tdRec = document.createElement('td');
-        tdRec.className = 'rec'; tdRec.textContent = fmt(r.rec);
+        tdRec.className = 'rec'; tdRec.textContent = fmt(r.rec) + unitSuffix;
+        if (r.unit === '混在') {
+          tdRec.classList.add('low-conf');
+          tdRec.title = '「日」と「回」が混在しています。列の対応を確認してください。';
+        }
 
         tr.append(tdDrug, tdDose, tdWeeks, tdMean, tdStd, tdMax, tdMin, tdRec);
         tbody.appendChild(tr);
