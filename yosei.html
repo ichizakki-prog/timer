@@ -1,0 +1,1471 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>粉薬 予製量シミュレーター</title>
+  <meta property="og:title" content="粉薬 予製量シミュレーター">
+  <meta property="og:description" content="過去の処方データから1週間あたりの推奨予製量を自動算出">
+  <meta property="og:type" content="website">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f0f13;
+      --surface: #1a1a24;
+      --surface2: #22222f;
+      --surface3: #2c2c3d;
+      --accent: #7c6bff;
+      --accent2: #ff6b9d;
+      --text: #f0f0f8;
+      --muted: #6b6b88;
+      --good: #4ade80;
+      --warn: #fbbf24;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      padding: 24px;
+    }
+
+    a.back-link {
+      align-self: flex-start;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+      margin-bottom: -8px;
+    }
+    a.back-link:hover { color: var(--text); }
+
+    h1 {
+      font-size: 1.4rem;
+      font-weight: 600;
+      text-align: center;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.85rem;
+      text-align: center;
+      max-width: 480px;
+      margin-top: -12px;
+    }
+
+    .card {
+      background: var(--surface);
+      border-radius: 24px;
+      padding: 28px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 26px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+      width: 100%;
+      max-width: 920px;
+    }
+
+    .step h2 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .hint { color: var(--muted); font-size: 0.8rem; line-height: 1.6; }
+    .hint.error { color: var(--accent2); }
+
+    /* Dropzone */
+    .dropzone {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      border: 2px dashed var(--surface3);
+      border-radius: 16px;
+      padding: 28px 16px;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 0.85rem;
+      transition: all 0.2s;
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--accent);
+      color: var(--text);
+      background: var(--surface2);
+    }
+
+    .row { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+    .row label { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+
+    select, input[type="number"] {
+      background: var(--surface2);
+      border: 1px solid var(--surface3);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 0.85rem;
+      outline: none;
+    }
+    select:focus, input:focus { border-color: var(--accent); }
+
+    .mapping-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+    }
+    .mapping-grid > div { display: flex; flex-direction: column; gap: 6px; }
+    .mapping-grid label { font-size: 0.75rem; color: var(--muted); }
+    .mapping-grid select { width: 100%; }
+
+    #safety-preset { width: 100%; max-width: 420px; }
+    #safety-custom { width: 140px; margin-top: 10px; }
+
+    .btn-primary {
+      border: none;
+      border-radius: 14px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 12px 24px;
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 4px 16px rgba(124,107,255,0.35);
+      transition: all 0.18s;
+      margin-top: 16px;
+      align-self: flex-start;
+    }
+    .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .btn-primary:active { transform: translateY(0); }
+
+    .table-wrap { overflow-x: auto; margin-top: 10px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; min-width: 640px; }
+    thead th {
+      text-align: left;
+      color: var(--muted);
+      font-weight: 600;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--surface3);
+      cursor: pointer;
+      white-space: nowrap;
+      user-select: none;
+    }
+    thead th:hover { color: var(--text); }
+    thead th.sorted::after { content: ' ▾'; color: var(--accent); }
+    thead th.sorted.asc::after { content: ' ▴'; color: var(--accent); }
+    tbody td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--surface2);
+      white-space: nowrap;
+    }
+    tbody tr:hover { background: var(--surface2); }
+    td.rec { font-weight: 700; color: var(--accent); }
+    td.drug { font-weight: 600; white-space: normal; min-width: 140px; }
+    td.dose { color: var(--muted); white-space: normal; max-width: 220px; }
+    td.low-conf { color: var(--warn); }
+    /* Weight-band badges — matches the paper 約束処方表's colour coding */
+    .band-badge {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      white-space: nowrap;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .band-color-0 { background: rgba(250, 204, 21, 0.18); color: #facc15; }
+    .band-color-1 { background: rgba(74, 222, 128, 0.18); color: #4ade80; }
+    .band-color-2 { background: rgba(96, 165, 250, 0.18); color: #60a5fa; }
+    .band-color-3 { background: rgba(255, 107, 157, 0.18); color: #ff6b9d; }
+    .band-color-x { background: rgba(148, 163, 184, 0.18); color: var(--muted); }
+    input.band-label-input {
+      background: transparent;
+      border: none;
+      border-bottom: 1px dashed var(--surface3);
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 600;
+      width: 72px;
+      padding: 2px 0;
+    }
+    input.band-label-input:focus { outline: none; border-bottom-color: var(--accent); color: var(--text); }
+    .set-tag { color: var(--muted); font-size: 0.72rem; font-weight: 500; margin-left: 6px; }
+
+    /* Set (combo) editor */
+    .set-card {
+      background: var(--surface2);
+      border: 1px solid var(--surface3);
+      border-radius: 14px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .set-card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .set-name-input {
+      background: var(--surface3);
+      border: 1px solid transparent;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      width: 160px;
+    }
+    .set-name-input:focus { border-color: var(--accent); outline: none; }
+    .set-remove-btn {
+      margin-left: auto;
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.8rem;
+      padding: 4px 8px;
+    }
+    .set-remove-btn:hover { color: var(--accent2); }
+    .drug-checklist { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+    .drug-checklist label {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 0.8rem; color: var(--text); cursor: pointer;
+    }
+    .drug-checklist .cnt { color: var(--muted); font-size: 0.72rem; }
+    .band-table-wrap { overflow-x: auto; }
+    .band-table { border-collapse: collapse; font-size: 0.8rem; }
+    .band-table th, .band-table td { padding: 4px 8px; text-align: left; }
+    .band-table th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+    .band-table select {
+      background: var(--surface3); border: 1px solid transparent; color: var(--text);
+      border-radius: 8px; padding: 5px 6px; font-size: 0.8rem;
+    }
+    .band-row-remove { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.9rem; }
+    .band-row-remove:hover { color: var(--accent2); }
+    .band-add-row-btn {
+      background: none; border: 1px dashed var(--surface3); color: var(--muted);
+      border-radius: 8px; padding: 5px 12px; font-size: 0.78rem; cursor: pointer; align-self: flex-start;
+    }
+    .band-add-row-btn:hover { color: var(--text); border-color: var(--accent); }
+  </style>
+</head>
+<body>
+  <a class="back-link" href="index.html">← Timer</a>
+  <h1>粉薬 予製量シミュレーター</h1>
+  <p class="subtitle">過去の処方データ（日時・処方日数・処方内容・用量）から、「薬剤×用量（体重帯）」の組み合わせごとに1週間あたりの推奨予製量（日数）を自動算出します。</p>
+
+  <div class="card">
+    <section class="step">
+      <h2>① データを読み込む</h2>
+      <label class="dropzone" id="dropzone">
+        <input type="file" id="file-input" accept=".xlsx,.xls,.csv" hidden>
+        <span id="dropzone-text">Excel(.xlsx) または CSV ファイルをドラッグ＆ドロップ、またはクリックして選択</span>
+      </label>
+      <div class="row" id="sheet-select-wrap" style="display:none">
+        <label>シート選択</label>
+        <select id="sheet-select"></select>
+      </div>
+      <div class="hint" id="file-info"></div>
+      <div class="hint">CSVはUTF-8形式で保存してください（文字化けする場合はExcel形式 .xlsx でお試しください）。</div>
+      <label class="row" id="no-header-row" style="display:none; cursor:pointer;">
+        <input type="checkbox" id="no-header-toggle">
+        <span class="hint" style="margin:0;">先頭行が見出し（列名）ではなく、データ行として使う</span>
+      </label>
+    </section>
+
+    <section class="step" id="mapping-step" style="display:none">
+      <h2>② 列の対応を確認</h2>
+      <div class="hint">見出しが無い場合は各列のサンプル値を表示しているので、内容を見て選んでください。</div>
+      <div class="mapping-grid">
+        <div>
+          <label>日時</label>
+          <select id="map-date"></select>
+        </div>
+        <div>
+          <label>処方日数・回数（例: 5日分／3回分）</label>
+          <select id="map-days"></select>
+        </div>
+        <div>
+          <label>処方内容（薬剤名）</label>
+          <select id="map-drug"></select>
+        </div>
+        <div>
+          <label>用量（体重帯の区別に使用・必須）</label>
+          <select id="map-dose"></select>
+        </div>
+        <div>
+          <label>用法（分2/分3等でセットを分ける場合に使用・任意）</label>
+          <select id="map-usage"></select>
+        </div>
+      </div>
+    </section>
+
+    <section class="step" id="set-step" style="display:none">
+      <h2>③ セット（組み合わせ処方）を定義（任意）</h2>
+      <div class="hint">「ムコムコ」「ムコムコアス」のように複数の薬を1つにまとめて予製している場合、ここで組み合わせを定義すると、セット単位でまとめて何日分作ればいいか算出します。定義しなかった薬は今まで通り単独で算出されます。</div>
+      <label class="row" style="cursor:pointer; margin-top:10px;">
+        <input type="checkbox" id="set-mode-toggle">
+        <span class="hint" style="margin:0;">セット単位で集計する</span>
+      </label>
+      <div id="set-editor" style="display:none; flex-direction:column; gap:16px; margin-top:14px;">
+        <div id="set-cards" style="display:flex; flex-direction:column; gap:14px;"></div>
+        <button class="btn-secondary" id="add-set-btn" type="button" style="border:none; border-radius:12px; padding:9px 18px; font-size:0.82rem; font-weight:600; cursor:pointer; align-self:flex-start;">＋ セットを追加</button>
+      </div>
+    </section>
+
+    <section class="step" id="dose-table-step" style="display:none">
+      <h2>④ 有効な用量（約束処方表）を設定</h2>
+      <div class="hint">ここに登録した薬剤・用量だけを予製の集計対象にします。表に無い薬剤や用量（個別に量を調整した分など）は結果から除外されます。</div>
+      <label class="row" style="cursor:pointer; margin-top:10px;">
+        <input type="checkbox" id="dose-filter-toggle" checked>
+        <span class="hint" style="margin:0;">表にある用量だけを対象にする</span>
+      </label>
+      <div id="dose-table-editor" style="display:flex; flex-direction:column; gap:14px; margin-top:14px;">
+        <div class="band-table-wrap">
+          <table class="band-table" id="dose-master-table">
+            <thead><tr id="dose-master-thead"></tr></thead>
+            <tbody id="dose-master-tbody"></tbody>
+          </table>
+        </div>
+        <div class="row" style="gap:10px;">
+          <button class="band-add-row-btn" id="dose-add-band-btn" type="button">＋ 体重帯を追加</button>
+          <select id="dose-add-drug-select" style="margin-left:auto;"></select>
+          <button class="band-add-row-btn" id="dose-add-drug-btn" type="button">＋ 薬剤を追加</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="step" id="settings-step" style="display:none">
+      <h2>⑤ 安全係数を選んで計算</h2>
+      <select id="safety-preset">
+        <option value="1.65">欠品をほぼゼロにしたい（欠品率の目安 約5%）</option>
+        <option value="1.28" selected>バランス重視（標準・推奨）</option>
+        <option value="0.67">廃棄を抑えたい（欠品率の目安 約25%許容）</option>
+        <option value="custom">カスタム係数を入力</option>
+      </select>
+      <input type="number" id="safety-custom" step="0.1" value="1.0" style="display:none" placeholder="係数 (例: 1.0)">
+      <p class="hint">「処方内容×用量」の組み合わせ（＝体重帯ごとの予製パターン）ごとに算出します。<br>推奨予製量（日数/週） = 週平均処方日数 ＋ 安全係数 × 標準偏差　（小数点以下は切り上げ）</p>
+      <button class="btn-primary" id="calc-btn">計算する</button>
+    </section>
+
+    <section class="step" id="result-step" style="display:none">
+      <h2>⑥ 結果</h2>
+      <div class="hint" id="result-summary"></div>
+      <div class="table-wrap">
+        <table id="result-table">
+          <thead>
+            <tr>
+              <th data-key="drug">薬剤名</th>
+              <th data-key="dose">用量(g)</th>
+              <th data-key="weeks">処方があった週</th>
+              <th data-key="mean">週平均</th>
+              <th data-key="std">標準偏差</th>
+              <th data-key="max">週最大</th>
+              <th data-key="min">週最小</th>
+              <th data-key="rec" class="sorted">推奨予製量(週あたり)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script src="vendor/xlsx.full.min.js"></script>
+  <script>
+    // ---------- state ----------
+    let workbook = null;
+    let headers = [];
+    let rows = [];
+    let currentResults = [];
+    let sortState = { key: 'rec', asc: false };
+
+    // ---------- helpers ----------
+    function pad2(n) { return String(n).padStart(2, '0'); }
+
+    function normalizeHeader(h) {
+      return String(h).replace(/\s+/g, '').toLowerCase();
+    }
+
+    function guessColumn(hdrs, keywords) {
+      for (const kw of keywords) {
+        const idx = hdrs.findIndex(h => normalizeHeader(h).includes(kw));
+        if (idx !== -1) return hdrs[idx];
+      }
+      return '';
+    }
+
+    function parseFlexibleDate(v) {
+      if (v instanceof Date && !isNaN(v)) return v;
+      if (typeof v === 'number' && isFinite(v)) {
+        // Excel serial date (1900 date system)
+        const utcDays = Math.floor(v - 25569);
+        const utcMs = utcDays * 86400 * 1000;
+        const d = new Date(utcMs);
+        return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+      }
+      if (typeof v === 'string') {
+        let s = v.trim();
+        if (!s) return null;
+        s = s.replace(/(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日/, '$1-$2-$3');
+        const m = s.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);
+        if (m) {
+          const dt = new Date(+m[1], +m[2] - 1, +m[3]);
+          if (!isNaN(dt)) return dt;
+        }
+        const dt2 = new Date(s);
+        if (!isNaN(dt2)) return dt2;
+      }
+      return null;
+    }
+
+    function parseNumeric(v) {
+      if (typeof v === 'number' && isFinite(v)) return v;
+      if (v === null || v === undefined) return null;
+      const s = String(v).replace(/[^\d.\-]/g, '');
+      if (!s) return null;
+      const n = parseFloat(s);
+      return isNaN(n) ? null : n;
+    }
+
+    // Parses values like "5日分" (regular drugs) or "3回分" (頓服/PRN drugs, dosed
+    // by count rather than days) into a number + unit. Falls back to a bare
+    // number with no unit (unit '') for plain numeric "処方日数" columns.
+    function parseCountWithUnit(v) {
+      if (v === null || v === undefined) return null;
+      if (typeof v === 'number' && isFinite(v)) return { value: v, unit: '' };
+      const s = String(v).trim();
+      if (!s) return null;
+      const m = s.match(/([\d]+(?:\.[\d]+)?)\s*(日|回)/);
+      if (m) return { value: parseFloat(m[1]), unit: m[2] };
+      const n = parseNumeric(s);
+      return n === null ? null : { value: n, unit: '' };
+    }
+
+    function mondayOf(date) {
+      const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const day = d.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      d.setDate(d.getDate() + diff);
+      return d;
+    }
+
+    function weekKeyOf(date) {
+      const m = mondayOf(date);
+      return `${m.getFullYear()}-${pad2(m.getMonth() + 1)}-${pad2(m.getDate())}`;
+    }
+
+    function dateStr(d) {
+      return `${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`;
+    }
+
+    function fmt(n) {
+      if (n === null || n === undefined || isNaN(n)) return '-';
+      return Number.isInteger(n) ? String(n) : n.toFixed(1);
+    }
+
+    // ---------- file loading ----------
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('file-input');
+    const dropzoneText = document.getElementById('dropzone-text');
+    const sheetWrap = document.getElementById('sheet-select-wrap');
+    const sheetSelect = document.getElementById('sheet-select');
+    const fileInfo = document.getElementById('file-info');
+
+    dropzone.addEventListener('click', () => fileInput.click());
+    dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+    dropzone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', e => {
+      if (e.target.files.length) handleFile(e.target.files[0]);
+    });
+
+    function handleFile(file) {
+      dropzoneText.textContent = `読み込み中... (${file.name})`;
+      const isCsvLike = /\.(csv|tsv|txt)$/i.test(file.name);
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          if (isCsvLike) {
+            // Read as UTF-8 text so Japanese headers decode correctly
+            // (parsing raw bytes as a generic 'array' misreads UTF-8 CSV as Latin-1).
+            let text = String(e.target.result);
+            if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // strip BOM
+            workbook = XLSX.read(text, { type: 'string', cellDates: true, raw: false });
+          } else {
+            const data = new Uint8Array(e.target.result);
+            workbook = XLSX.read(data, { type: 'array', cellDates: true });
+          }
+          dropzoneText.textContent = `選択中: ${file.name}`;
+          if (workbook.SheetNames.length > 1) {
+            sheetWrap.style.display = 'flex';
+            sheetSelect.innerHTML = '';
+            workbook.SheetNames.forEach(name => {
+              const opt = document.createElement('option');
+              opt.value = name; opt.textContent = name;
+              sheetSelect.appendChild(opt);
+            });
+          } else {
+            sheetWrap.style.display = 'none';
+          }
+          loadSheet(workbook.SheetNames[0]);
+        } catch (err) {
+          fileInfo.textContent = 'ファイルの読み込みに失敗しました: ' + err.message;
+          fileInfo.classList.add('error');
+        }
+      };
+      if (isCsvLike) {
+        reader.readAsText(file, 'UTF-8');
+      } else {
+        reader.readAsArrayBuffer(file);
+      }
+    }
+
+    sheetSelect.addEventListener('change', () => loadSheet(sheetSelect.value));
+
+    function excelColLetter(idx) {
+      let s = '', n = idx + 1;
+      while (n > 0) {
+        const rem = (n - 1) % 26;
+        s = String.fromCharCode(65 + rem) + s;
+        n = Math.floor((n - 1) / 26);
+      }
+      return s;
+    }
+
+    let currentAoa = [];       // raw rows-of-arrays for the loaded sheet
+    let columnPreviews = {};   // header -> "sample1, sample2, sample3"
+    const noHeaderToggle = document.getElementById('no-header-toggle');
+    const noHeaderRow = document.getElementById('no-header-row');
+
+    function cellToStr(v) {
+      if (v instanceof Date && !isNaN(v)) return dateStr(v);
+      return String(v ?? '').trim();
+    }
+
+    function loadSheet(sheetName) {
+      const ws = workbook.Sheets[sheetName];
+      currentAoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      if (!currentAoa.length) {
+        fileInfo.classList.add('error');
+        fileInfo.textContent = 'データが見つかりませんでした。';
+        return;
+      }
+
+      const firstRow = currentAoa[0];
+      const looksLikeHeader = firstRow.some(c => cellToStr(c) !== '');
+      noHeaderRow.style.display = 'flex';
+      noHeaderToggle.checked = !looksLikeHeader;
+
+      buildRowsFromAoa();
+
+      fileInfo.classList.remove('error');
+      fileInfo.textContent = `${rows.length}行を読み込みました（列: ${headers.join(' / ')}）`;
+
+      populateMapping();
+      document.getElementById('mapping-step').style.display = 'block';
+      document.getElementById('settings-step').style.display = 'block';
+      document.getElementById('result-step').style.display = 'none';
+    }
+
+    noHeaderToggle.addEventListener('change', () => {
+      if (!currentAoa.length) return;
+      buildRowsFromAoa();
+      fileInfo.classList.remove('error');
+      fileInfo.textContent = `${rows.length}行を読み込みました（列: ${headers.join(' / ')}）`;
+      populateMapping();
+    });
+
+    // Builds `rows` (array of {header: value}) and `headers` from currentAoa,
+    // honoring the "先頭行は見出しではない" toggle. Column alignment is kept
+    // by position (not by relying on sheet_to_json's implicit header mapping),
+    // so a blank or missing header cell never drops or shifts a column.
+    function buildRowsFromAoa() {
+      const treatFirstAsHeader = !noHeaderToggle.checked;
+      const numCols = currentAoa.reduce((m, r) => Math.max(m, r.length), 0);
+      const firstRow = currentAoa[0] || [];
+
+      const seen = new Map();
+      headers = [];
+      for (let i = 0; i < numCols; i++) {
+        let label = treatFirstAsHeader ? cellToStr(firstRow[i]) : '';
+        if (!label) label = `列${excelColLetter(i)}`;
+        const n = (seen.get(label) || 0) + 1;
+        seen.set(label, n);
+        headers.push(n > 1 ? `${label}(${excelColLetter(i)})` : label);
+      }
+
+      const dataRows = treatFirstAsHeader ? currentAoa.slice(1) : currentAoa;
+      rows = dataRows.map(r => {
+        const obj = {};
+        headers.forEach((h, i) => { obj[h] = r[i] !== undefined ? r[i] : ''; });
+        return obj;
+      });
+
+      columnPreviews = {};
+      headers.forEach((h, i) => {
+        const vals = [];
+        for (const r of dataRows) {
+          const s = cellToStr(r[i]);
+          if (s !== '' && !vals.includes(s)) vals.push(s);
+          if (vals.length >= 3) break;
+        }
+        columnPreviews[h] = vals.join(' / ');
+      });
+    }
+
+    function populateMapping() {
+      const dateGuess = guessColumn(headers, ['日時', '日付', '処方日', '調剤日', '受付日']);
+      const daysGuess = guessColumn(headers, ['処方日数', '日数', '回数']);
+      const drugGuess = guessColumn(headers, ['処方内容', '薬剤名', '薬品名', '品名']);
+      const doseGuess = guessColumn(headers, ['用量', '容量', '分量']);
+      const usageGuess = guessColumn(headers, ['用法', '服用方法', '服薬方法']);
+
+      fillSelect('map-date', headers, dateGuess, false);
+      fillSelect('map-days', headers, daysGuess, false);
+      fillSelect('map-drug', headers, drugGuess, false);
+      fillSelect('map-dose', headers, doseGuess, false);
+      fillSelect('map-usage', headers, usageGuess, true);
+      refreshDoseTableAvailability();
+      refreshSetAvailability();
+    }
+
+    // Extracts a dosing frequency ("分1"/"分2"/"分3"...) from free-text 用法
+    // like "１日３回　毎食後服用" or "分２". Returns '' when no count is found
+    // (e.g. PRN instructions like "発熱時"), which set frequency filters treat
+    // as "doesn't count toward any frequency-restricted set".
+    function parseFrequency(v) {
+      const s = String(v ?? '').trim();
+      if (!s) return '';
+      const norm = s.replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
+      const m = norm.match(/分\s*(\d)|(\d)\s*回/);
+      return m ? (m[1] || m[2]) : '';
+    }
+
+    function fillSelect(id, opts, selected, allowNone) {
+      const sel = document.getElementById(id);
+      sel.innerHTML = '';
+      if (allowNone) {
+        const optNone = document.createElement('option');
+        optNone.value = ''; optNone.textContent = '（なし）';
+        sel.appendChild(optNone);
+      } else {
+        const optPlaceholder = document.createElement('option');
+        optPlaceholder.value = ''; optPlaceholder.textContent = '-- 選択してください --';
+        sel.appendChild(optPlaceholder);
+      }
+      opts.forEach(h => {
+        const opt = document.createElement('option');
+        opt.value = h;
+        const preview = columnPreviews[h];
+        opt.textContent = preview ? `${h}　例: ${preview}` : h;
+        if (h === selected) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
+
+    // ---------- weight-band labels (shared across the set editor and the
+    // dose allowlist table, so "帯1" means the same weight range everywhere) ----------
+    let bandLabels = ['7-10kg', '10-15kg', '15-20kg', '20-25kg'];
+    function ensureBandLabels(n) {
+      while (bandLabels.length < n) bandLabels.push(`帯${bandLabels.length + 1}`);
+    }
+    function bandLabel(idx) {
+      ensureBandLabels(idx + 1);
+      return bandLabels[idx];
+    }
+    function bandColorClass(idx) {
+      return idx >= 0 && idx < 4 ? `band-color-${idx}` : 'band-color-x';
+    }
+
+    // ---------- set (combo prescription) editor ----------
+    // A "set" bundles two or more drugs that are always pre-compounded and
+    // dispensed together (e.g. "ムコムコ" = カルボシステインDS + アンブロキソールDS).
+    // Each band row maps one weight-band's per-drug dose across the set's
+    // members, since the same weight band has a different gram amount per drug.
+    let sets = [];
+    let setIdCounter = 0;
+    let lastDrugCol = null, lastDoseCol = null;
+
+    function getDistinctDrugs() {
+      const drugCol = document.getElementById('map-drug').value;
+      if (!drugCol) return [];
+      const counts = new Map();
+      rows.forEach(r => {
+        const d = String(r[drugCol] ?? '').trim();
+        if (!d) return;
+        counts.set(d, (counts.get(d) || 0) + 1);
+      });
+      return [...counts.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+    }
+
+    function doseFreqForDrug(drugName) {
+      const drugCol = document.getElementById('map-drug').value;
+      const doseCol = document.getElementById('map-dose').value;
+      const counts = new Map();
+      rows.forEach(r => {
+        if (String(r[drugCol] ?? '').trim() !== drugName) return;
+        const dose = String(r[doseCol] ?? '').trim();
+        if (!dose) return;
+        counts.set(dose, (counts.get(dose) || 0) + 1);
+      });
+      return counts;
+    }
+
+    function sortedDistinctDoses(drugName) {
+      const freq = doseFreqForDrug(drugName);
+      return [...freq.keys()].sort((a, b) => (parseNumeric(a) ?? 0) - (parseNumeric(b) ?? 0));
+    }
+
+    function newSet(name, drugList, freq) {
+      const set = { id: 'set' + (++setIdCounter), name, drugs: [...drugList], bandRows: [], freq: freq || '' };
+      seedBandRows(set);
+      return set;
+    }
+
+    // Picks a drug's K most-frequently-prescribed doses (dropping rare,
+    // likely off-protocol individualized doses), then sorts just that
+    // subset ascending by value. Aligning drugs on this list — rather than
+    // on their raw distinct-dose list — is what correctly pairs e.g.
+    // アスベリン's smaller gram amounts to カルボ/アンブロ's, even though
+    // the raw values don't match and the drugs have different numbers of
+    // distinct doses overall.
+    function topDosesByFrequency(drugName, k) {
+      const freq = doseFreqForDrug(drugName);
+      return [...freq.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, k)
+        .map(([dose]) => dose)
+        .sort((a, b) => (parseNumeric(a) ?? 0) - (parseNumeric(b) ?? 0));
+    }
+
+    function seedBandRows(set) {
+      if (set.drugs.length < 2) { set.bandRows = []; return; }
+
+      // Prefer the 約束処方表 (master dose allowlist, step ④) as the source of
+      // band alignment when every drug in this set is already registered
+      // there — that keeps weight-band index 0 meaning "7-10kg" (etc.)
+      // consistently across every set and the individual-drug results,
+      // instead of each set re-deriving its own (possibly differently
+      // ordered/sized) band list from raw dose frequency.
+      const masterRows = set.drugs.map(d => doseTable.find(r => r.drug === d));
+      if (masterRows.every(r => r)) {
+        const rowCount = Math.max(...masterRows.map(r => r.bands.length));
+        set.bandRows = [];
+        for (let i = 0; i < rowCount; i++) {
+          const row = {};
+          set.drugs.forEach((d, di) => { row[d] = masterRows[di].bands[i] || ''; });
+          set.bandRows.push(row);
+        }
+        return;
+      }
+
+      // Fallback (no master table entry yet for one of the drugs): derive
+      // bands directly from observed dose frequency, same as before.
+      const distinctCounts = set.drugs.map(d => sortedDistinctDoses(d).length);
+      const k = Math.min(10, Math.max(1, Math.min(...distinctCounts)));
+      const aligned = {};
+      set.drugs.forEach(d => { aligned[d] = topDosesByFrequency(d, k); });
+      set.bandRows = [];
+      for (let i = 0; i < k; i++) {
+        const row = {};
+        set.drugs.forEach(d => { row[d] = aligned[d][i] || ''; });
+        set.bandRows.push(row);
+      }
+    }
+
+    function autoSeedSets() {
+      const names = getDistinctDrugs().map(d => d.name);
+      const find = re => names.find(n => re.test(n));
+      const carbo = find(/カルボシステイン/);
+      const ambro = find(/アンブロキソール/);
+      const asbe = find(/アスベリン/);
+      if (carbo && ambro) {
+        sets.push(newSet('ムコムコ', [carbo, ambro]));
+        if (asbe) {
+          sets.push(newSet('ムコムコアス(分3)', [carbo, ambro, asbe], '3'));
+          sets.push(newSet('ムコムコアス(分2)', [carbo, ambro, asbe], '2'));
+        }
+      }
+    }
+
+    function refreshSetAvailability() {
+      const drugCol = document.getElementById('map-drug').value;
+      const doseCol = document.getElementById('map-dose').value;
+      const setStep = document.getElementById('set-step');
+      if (!drugCol || !doseCol) { setStep.style.display = 'none'; return; }
+      setStep.style.display = 'block';
+      if (drugCol !== lastDrugCol || doseCol !== lastDoseCol) {
+        lastDrugCol = drugCol; lastDoseCol = doseCol;
+        sets = [];
+        autoSeedSets();
+        const hasSeed = sets.length > 0;
+        document.getElementById('set-mode-toggle').checked = hasSeed;
+        document.getElementById('set-editor').style.display = hasSeed ? 'flex' : 'none';
+      }
+      renderSetCards();
+    }
+
+    document.getElementById('map-drug').addEventListener('change', refreshDoseTableAvailability);
+    document.getElementById('map-dose').addEventListener('change', refreshDoseTableAvailability);
+    document.getElementById('map-drug').addEventListener('change', refreshSetAvailability);
+    document.getElementById('map-dose').addEventListener('change', refreshSetAvailability);
+    document.getElementById('map-usage').addEventListener('change', () => renderSetCards());
+
+    document.getElementById('set-mode-toggle').addEventListener('change', () => {
+      document.getElementById('set-editor').style.display =
+        document.getElementById('set-mode-toggle').checked ? 'flex' : 'none';
+    });
+
+    document.getElementById('add-set-btn').addEventListener('click', () => {
+      sets.push({ id: 'set' + (++setIdCounter), name: `セット${sets.length + 1}`, drugs: [], bandRows: [] });
+      document.getElementById('set-mode-toggle').checked = true;
+      document.getElementById('set-editor').style.display = 'flex';
+      renderSetCards();
+    });
+
+    function renderSetCards() {
+      const container = document.getElementById('set-cards');
+      container.innerHTML = '';
+      const allDrugs = getDistinctDrugs();
+
+      sets.forEach(set => {
+        const card = document.createElement('div');
+        card.className = 'set-card';
+
+        const head = document.createElement('div');
+        head.className = 'set-card-head';
+        const nameInput = document.createElement('input');
+        nameInput.className = 'set-name-input';
+        nameInput.value = set.name;
+        nameInput.addEventListener('input', () => { set.name = nameInput.value; });
+
+        const freqWrap = document.createElement('label');
+        freqWrap.style.display = 'flex';
+        freqWrap.style.alignItems = 'center';
+        freqWrap.style.gap = '6px';
+        freqWrap.style.fontSize = '0.78rem';
+        freqWrap.style.color = 'var(--muted)';
+        freqWrap.textContent = '用法で絞り込み:';
+        const freqSel = document.createElement('select');
+        freqSel.className = 'set-name-input';
+        freqSel.style.width = 'auto';
+        freqSel.style.fontWeight = '400';
+        [['', '指定しない'], ['1', '分1'], ['2', '分2'], ['3', '分3'], ['4', '分4']].forEach(([val, label]) => {
+          const opt = document.createElement('option');
+          opt.value = val; opt.textContent = label;
+          if (set.freq === val) opt.selected = true;
+          freqSel.appendChild(opt);
+        });
+        freqSel.addEventListener('change', () => { set.freq = freqSel.value; });
+        freqWrap.appendChild(freqSel);
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'set-remove-btn';
+        removeBtn.textContent = '× セットを削除';
+        removeBtn.addEventListener('click', () => {
+          sets = sets.filter(s => s.id !== set.id);
+          renderSetCards();
+        });
+        head.append(nameInput, freqWrap, removeBtn);
+        card.appendChild(head);
+        if (set.freq && !document.getElementById('map-usage').value) {
+          const warn = document.createElement('div');
+          warn.className = 'hint';
+          warn.style.color = 'var(--warn)';
+          warn.textContent = '「用法」の列が選択されていないため、このセットは一致しません。②で用法の列を選んでください。';
+          card.appendChild(warn);
+        }
+
+        const checklist = document.createElement('div');
+        checklist.className = 'drug-checklist';
+        allDrugs.forEach(({ name, count }) => {
+          const label = document.createElement('label');
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = set.drugs.includes(name);
+          cb.addEventListener('change', () => {
+            if (cb.checked) {
+              if (!set.drugs.includes(name)) set.drugs.push(name);
+            } else {
+              set.drugs = set.drugs.filter(d => d !== name);
+              set.bandRows.forEach(row => { delete row[name]; });
+            }
+            if (set.bandRows.length === 0) seedBandRows(set);
+            renderSetCards();
+          });
+          const span = document.createElement('span');
+          span.textContent = name;
+          const cnt = document.createElement('span');
+          cnt.className = 'cnt';
+          cnt.textContent = `(${count}件)`;
+          label.append(cb, span, cnt);
+          checklist.appendChild(label);
+        });
+        card.appendChild(checklist);
+
+        if (set.drugs.length >= 2) {
+          card.appendChild(buildBandTable(set));
+        } else {
+          const hint = document.createElement('div');
+          hint.className = 'hint';
+          hint.textContent = 'このセットに含める薬を2つ以上選んでください。';
+          card.appendChild(hint);
+        }
+
+        container.appendChild(card);
+      });
+    }
+
+    function buildBandTable(set) {
+      const outer = document.createElement('div');
+      outer.style.display = 'flex';
+      outer.style.flexDirection = 'column';
+      outer.style.gap = '8px';
+
+      const hint = document.createElement('div');
+      hint.className = 'hint';
+      hint.textContent = '体重帯ごとに、各薬の用量を選んでください（件数が多いものが標準的な用量です）。';
+      outer.appendChild(hint);
+
+      const wrap = document.createElement('div');
+      wrap.className = 'band-table-wrap';
+      const table = document.createElement('table');
+      table.className = 'band-table';
+
+      const thead = document.createElement('thead');
+      const trh = document.createElement('tr');
+      const thBand = document.createElement('th'); thBand.textContent = '体重帯';
+      trh.appendChild(thBand);
+      set.drugs.forEach(d => { const th = document.createElement('th'); th.textContent = d; trh.appendChild(th); });
+      trh.appendChild(document.createElement('th'));
+      thead.appendChild(trh);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      ensureBandLabels(set.bandRows.length);
+      set.bandRows.forEach((row, idx) => {
+        const tr = document.createElement('tr');
+        const tdLabel = document.createElement('td');
+        const labelInput = document.createElement('input');
+        labelInput.type = 'text';
+        labelInput.className = 'band-label-input';
+        labelInput.value = bandLabel(idx);
+        labelInput.addEventListener('input', () => { bandLabels[idx] = labelInput.value; });
+        labelInput.addEventListener('blur', () => { renderDoseTable(); renderSetCards(); });
+        tdLabel.appendChild(labelInput);
+        tr.appendChild(tdLabel);
+        set.drugs.forEach(d => {
+          const td = document.createElement('td');
+          const sel = document.createElement('select');
+          const optBlank = document.createElement('option');
+          optBlank.value = ''; optBlank.textContent = '(未選択)';
+          sel.appendChild(optBlank);
+          const freq = doseFreqForDrug(d);
+          [...freq.keys()].sort((a, b) => (parseNumeric(a) ?? 0) - (parseNumeric(b) ?? 0)).forEach(dose => {
+            const opt = document.createElement('option');
+            opt.value = dose;
+            opt.textContent = `${dose} (${freq.get(dose)}件)`;
+            if (row[d] === dose) opt.selected = true;
+            sel.appendChild(opt);
+          });
+          sel.addEventListener('change', () => { row[d] = sel.value; });
+          td.appendChild(sel);
+          tr.appendChild(td);
+        });
+        const tdRemove = document.createElement('td');
+        const btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'band-row-remove'; btn.textContent = '×';
+        btn.title = 'この帯を削除';
+        btn.addEventListener('click', () => { set.bandRows.splice(idx, 1); renderSetCards(); });
+        tdRemove.appendChild(btn);
+        tr.appendChild(tdRemove);
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+      outer.appendChild(wrap);
+
+      const addRowBtn = document.createElement('button');
+      addRowBtn.type = 'button';
+      addRowBtn.className = 'band-add-row-btn';
+      addRowBtn.textContent = '＋ 帯を追加';
+      addRowBtn.addEventListener('click', () => {
+        const row = {};
+        set.drugs.forEach(d => { row[d] = ''; });
+        set.bandRows.push(row);
+        renderSetCards();
+      });
+      outer.appendChild(addRowBtn);
+
+      return outer;
+    }
+
+    // ---------- master dose allowlist (約束処方表) ----------
+    // Restricts every calculation (both set-matching and individual
+    // per-drug aggregation) to a fixed table of "official" doses per drug —
+    // the standard weight-band amounts a clinic actually pre-compounds —
+    // so one-off individualized doses never show up as a recommended 予製.
+    let doseTable = [];        // [{ drug, bands: [doseStr, ...] }]
+    let doseBandCount = 4;
+    let doseTableInitialized = false;
+    let lastDoseTableDrugCol = null, lastDoseTableDoseCol = null;
+
+    const OFFICIAL_DOSE_BANDS = [
+      { re: /カルボシステイン/, bands: [0.45, 0.6, 0.9, 1.2] },
+      { re: /アンブロキソール/, bands: [0.45, 0.6, 0.9, 1.2] },
+      { re: /アスベリン/, bands: [0.15, 0.2, 0.3, 0.4] },
+      { re: /ホクナリン/, bands: [0.3, 0.4, 0.6, 0.8] },
+      { re: /トランサミン/, bands: [0.45, 0.6, 0.9, 1.2] },
+      { re: /ミヤ.?[BbＢ][MmＭ]/, bands: [0.7, 1.0, 1.5, 2.0] },
+      { re: /カロナール/, bands: [null, 0.75, 1.0, 1.25] },
+      { re: /ナウゼリン/, bands: [null, null, 0.5, 0.6] },
+    ];
+
+    function findClosestDoseString(drugName, targetGram) {
+      if (targetGram === null || targetGram === undefined) return '';
+      let best = '', bestDiff = Infinity;
+      sortedDistinctDoses(drugName).forEach(d => {
+        const v = parseNumeric(d);
+        if (v === null) return;
+        const diff = Math.abs(v - targetGram);
+        if (diff < bestDiff) { bestDiff = diff; best = d; }
+      });
+      return bestDiff <= 0.005 ? best : '';
+    }
+
+    function autoSeedDoseTable() {
+      const names = getDistinctDrugs().map(d => d.name);
+      doseTable = [];
+      doseBandCount = 4;
+      OFFICIAL_DOSE_BANDS.forEach(spec => {
+        const drug = names.find(n => spec.re.test(n));
+        if (!drug) return;
+        const bands = spec.bands.map(g => g === null ? '' : findClosestDoseString(drug, g));
+        doseTable.push({ drug, bands });
+      });
+    }
+
+    function refreshDoseTableAvailability() {
+      const drugCol = document.getElementById('map-drug').value;
+      const doseCol = document.getElementById('map-dose').value;
+      const step = document.getElementById('dose-table-step');
+      if (!drugCol || !doseCol) { step.style.display = 'none'; return; }
+      step.style.display = 'block';
+      if (!doseTableInitialized || drugCol !== lastDoseTableDrugCol || doseCol !== lastDoseTableDoseCol) {
+        lastDoseTableDrugCol = drugCol; lastDoseTableDoseCol = doseCol;
+        autoSeedDoseTable();
+        doseTableInitialized = true;
+      }
+      renderDoseTable();
+    }
+
+    document.getElementById('dose-filter-toggle').addEventListener('change', () => {
+      document.getElementById('dose-table-editor').style.display =
+        document.getElementById('dose-filter-toggle').checked ? 'flex' : 'none';
+    });
+
+    document.getElementById('dose-add-band-btn').addEventListener('click', () => {
+      doseBandCount++;
+      doseTable.forEach(row => { row.bands.push(''); });
+      renderDoseTable();
+    });
+
+    document.getElementById('dose-add-drug-btn').addEventListener('click', () => {
+      const sel = document.getElementById('dose-add-drug-select');
+      const drug = sel.value;
+      if (!drug || doseTable.some(r => r.drug === drug)) return;
+      doseTable.push({ drug, bands: new Array(doseBandCount).fill('') });
+      renderDoseTable();
+    });
+
+    function renderDoseTable() {
+      const thead = document.getElementById('dose-master-thead');
+      const tbody = document.getElementById('dose-master-tbody');
+      thead.innerHTML = '';
+      tbody.innerHTML = '';
+
+      const thDrug = document.createElement('th'); thDrug.textContent = '薬剤名';
+      thead.appendChild(thDrug);
+      ensureBandLabels(doseBandCount);
+      for (let i = 0; i < doseBandCount; i++) {
+        const th = document.createElement('th');
+        const labelInput = document.createElement('input');
+        labelInput.type = 'text';
+        labelInput.className = 'band-label-input';
+        labelInput.value = bandLabel(i);
+        labelInput.addEventListener('input', () => { bandLabels[i] = labelInput.value; });
+        labelInput.addEventListener('blur', () => { renderDoseTable(); renderSetCards(); });
+        th.appendChild(labelInput);
+        thead.appendChild(th);
+      }
+      thead.appendChild(document.createElement('th'));
+
+      doseTable.forEach(row => {
+        while (row.bands.length < doseBandCount) row.bands.push('');
+        const tr = document.createElement('tr');
+        const tdDrug = document.createElement('td'); tdDrug.textContent = row.drug;
+        tdDrug.style.fontWeight = '600';
+        tr.appendChild(tdDrug);
+
+        const freq = doseFreqForDrug(row.drug);
+        const doses = [...freq.keys()].sort((a, b) => (parseNumeric(a) ?? 0) - (parseNumeric(b) ?? 0));
+
+        row.bands.forEach((val, i) => {
+          const td = document.createElement('td');
+          const sel = document.createElement('select');
+          const optBlank = document.createElement('option');
+          optBlank.value = ''; optBlank.textContent = '(対象外)';
+          sel.appendChild(optBlank);
+          doses.forEach(dose => {
+            const opt = document.createElement('option');
+            opt.value = dose;
+            opt.textContent = `${dose} (${freq.get(dose)}件)`;
+            if (val === dose) opt.selected = true;
+            sel.appendChild(opt);
+          });
+          sel.addEventListener('change', () => { row.bands[i] = sel.value; });
+          td.appendChild(sel);
+          tr.appendChild(td);
+        });
+
+        const tdRemove = document.createElement('td');
+        const btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'band-row-remove'; btn.textContent = '×';
+        btn.title = 'この薬剤を表から削除';
+        btn.addEventListener('click', () => {
+          doseTable = doseTable.filter(r => r !== row);
+          renderDoseTable();
+        });
+        tdRemove.appendChild(btn);
+        tr.appendChild(tdRemove);
+        tbody.appendChild(tr);
+      });
+
+      const addDrugSelect = document.getElementById('dose-add-drug-select');
+      addDrugSelect.innerHTML = '';
+      const already = new Set(doseTable.map(r => r.drug));
+      getDistinctDrugs().filter(d => !already.has(d.name)).forEach(({ name, count }) => {
+        const opt = document.createElement('option');
+        opt.value = name; opt.textContent = `${name} (${count}件)`;
+        addDrugSelect.appendChild(opt);
+      });
+    }
+
+    // ---------- safety factor ----------
+    const safetyPreset = document.getElementById('safety-preset');
+    const safetyCustom = document.getElementById('safety-custom');
+    safetyPreset.addEventListener('change', () => {
+      safetyCustom.style.display = safetyPreset.value === 'custom' ? 'inline-block' : 'none';
+    });
+    function getZ() {
+      if (safetyPreset.value === 'custom') {
+        const v = parseFloat(safetyCustom.value);
+        return isNaN(v) ? 0 : v;
+      }
+      return parseFloat(safetyPreset.value);
+    }
+
+    // ---------- calculation ----------
+    document.getElementById('calc-btn').addEventListener('click', calculate);
+
+    function calculate() {
+      const dateCol = document.getElementById('map-date').value;
+      const daysCol = document.getElementById('map-days').value;
+      const drugCol = document.getElementById('map-drug').value;
+      const doseCol = document.getElementById('map-dose').value;
+      const usageCol = document.getElementById('map-usage').value;
+
+      const summaryEl = document.getElementById('result-summary');
+      const resultStep = document.getElementById('result-step');
+
+      if (!dateCol || !daysCol || !drugCol || !doseCol) {
+        resultStep.style.display = 'block';
+        summaryEl.classList.add('error');
+        summaryEl.textContent = '「日時」「処方日数」「処方内容」「用量」の列をすべて選択してください（用量は体重帯を区別するために必要です）。';
+        document.querySelector('#result-table tbody').innerHTML = '';
+        return;
+      }
+      summaryEl.classList.remove('error');
+
+      const z = getZ();
+      let minDate = null, maxDate = null;
+      let validCount = 0, skipped = 0, filteredOut = 0;
+
+      const doseFilterOn = document.getElementById('dose-filter-toggle').checked;
+      const doseAllowlist = new Map(); // drug -> Set(allowed dose strings)
+      const doseToBandIdx = new Map(); // drug -> Map(doseStr -> bandIdx), for labeling results
+      doseTable.forEach(row => {
+        const allowed = new Set(row.bands.filter(b => b));
+        if (allowed.size) doseAllowlist.set(row.drug, allowed);
+        const byDose = new Map();
+        row.bands.forEach((dose, idx) => { if (dose) byDose.set(dose, idx); });
+        doseToBandIdx.set(row.drug, byDose);
+      });
+
+      // Index every valid row by date + drug + dose + (days,unit), keeping counts
+      // rather than row objects. This lets set-matching "consume" instances by
+      // decrementing counts, so whatever is left over is exactly what should
+      // still be counted as an individual (non-set) prescription — no double
+      // counting between set rows and individual-drug rows.
+      const index = new Map(); // dateKey -> drug -> dose -> "days|unit" -> count
+      function idxAdd(dateKey, drug, dose, duKey) {
+        if (!index.has(dateKey)) index.set(dateKey, new Map());
+        const byDrug = index.get(dateKey);
+        if (!byDrug.has(drug)) byDrug.set(drug, new Map());
+        const byDose = byDrug.get(drug);
+        if (!byDose.has(dose)) byDose.set(dose, new Map());
+        const byDU = byDose.get(dose);
+        byDU.set(duKey, (byDU.get(duKey) || 0) + 1);
+      }
+      function idxGet(dateKey, drug, dose) {
+        return index.get(dateKey)?.get(drug)?.get(dose);
+      }
+
+      rows.forEach(r => {
+        const d = parseFlexibleDate(r[dateCol]);
+        const countInfo = parseCountWithUnit(r[daysCol]);
+        const drug = String(r[drugCol] ?? '').trim();
+        const dose = String(r[doseCol] ?? '').trim();
+
+        if (!d || !countInfo || !drug || !dose) { skipped++; return; }
+        if (doseFilterOn) {
+          const allowed = doseAllowlist.get(drug);
+          if (!allowed || !allowed.has(dose)) { filteredOut++; return; }
+        }
+        validCount++;
+
+        if (!minDate || d < minDate) minDate = d;
+        if (!maxDate || d > maxDate) maxDate = d;
+
+        const dateKey = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+        const freq = usageCol ? parseFrequency(r[usageCol]) : '';
+        idxAdd(dateKey, drug, dose, countInfo.value + '|' + countInfo.unit + '|' + freq);
+      });
+
+      if (!minDate || !maxDate || validCount === 0) {
+        resultStep.style.display = 'block';
+        summaryEl.classList.add('error');
+        summaryEl.textContent = '有効なデータが見つかりませんでした。列の対応を確認してください。';
+        document.querySelector('#result-table tbody').innerHTML = '';
+        return;
+      }
+
+      // build full continuous week list across the whole dataset range
+      const weeks = [];
+      let cursor = mondayOf(minDate);
+      const lastMonday = mondayOf(maxDate);
+      while (cursor <= lastMonday) {
+        weeks.push(`${cursor.getFullYear()}-${pad2(cursor.getMonth() + 1)}-${pad2(cursor.getDate())}`);
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 7);
+      }
+      const totalWeeks = weeks.length;
+      const dateFromKey = k => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); };
+
+      function statsFor(wkMap) {
+        const values = weeks.map(w => wkMap.get(w) || 0);
+        const n = values.length;
+        const sum = values.reduce((a, b) => a + b, 0);
+        const mean = sum / n;
+        const variance = n > 1 ? values.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1) : 0;
+        const std = Math.sqrt(variance);
+        return {
+          mean, std,
+          max: Math.max(...values), min: Math.min(...values),
+          rec: Math.max(0, Math.ceil(mean + z * std)),
+          nonzeroWeeks: values.filter(v => v > 0).length,
+        };
+      }
+
+      currentResults = [];
+      let setInstanceTotal = 0;
+
+      const setModeOn = document.getElementById('set-mode-toggle').checked;
+      if (setModeOn) {
+        // Match larger sets first (e.g. the 3-drug "ムコムコアス" before the
+        // 2-drug "ムコムコ") so a bigger combo isn't starved of components
+        // that a smaller, less specific set already claimed for itself.
+        const orderedSets = [...sets].sort((a, b) => b.drugs.length - a.drugs.length);
+        orderedSets.forEach(set => {
+          if (set.drugs.length < 2) return;
+          set.bandRows.forEach((bandDoses, bandIdx) => {
+            if (set.drugs.some(d => !bandDoses[d])) return; // incomplete band row, skip
+            const wkMap = new Map();
+            let anyMatch = false;
+            let sampleUnit = '日';
+            index.forEach((byDrug, dateKey) => {
+              const firstDrug = set.drugs[0];
+              const duMap = byDrug.get(firstDrug)?.get(bandDoses[firstDrug]);
+              if (!duMap) return;
+              [...duMap.keys()].forEach(duKey => {
+                const [daysStr, unit, freq] = duKey.split('|');
+                if (set.freq && freq !== set.freq) return;
+                let minCount = Infinity;
+                set.drugs.forEach(d => {
+                  const m = byDrug.get(d)?.get(bandDoses[d]);
+                  minCount = Math.min(minCount, m ? (m.get(duKey) || 0) : 0);
+                });
+                if (!isFinite(minCount) || minCount <= 0) return;
+                const daysVal = parseFloat(daysStr);
+                set.drugs.forEach(d => {
+                  const m = byDrug.get(d).get(bandDoses[d]);
+                  m.set(duKey, m.get(duKey) - minCount);
+                });
+                const wk = weekKeyOf(dateFromKey(dateKey));
+                wkMap.set(wk, (wkMap.get(wk) || 0) + daysVal * minCount);
+                anyMatch = true;
+                sampleUnit = unit || '日';
+                setInstanceTotal += minCount;
+              });
+            });
+            if (!anyMatch) return;
+            const s = statsFor(wkMap);
+            const doseDisplay = set.drugs.map(d => bandDoses[d]).join(' + ');
+            currentResults.push({
+              drug: set.name, doseDisplay, unit: sampleUnit, isSet: true, bandIdx,
+              totalWeeks, ...s
+            });
+          });
+        });
+      }
+
+      // Whatever remains in `index` after set-matching (or everything, if no
+      // sets matched) is aggregated per drug×dose exactly as before.
+      const remaining = new Map(); // "drug|dose" -> weekKey -> sum
+      const remainingUnits = new Map(); // "drug|dose" -> Set(units)
+      const remainingMeta = new Map(); // "drug|dose" -> {drug, dose}
+      index.forEach((byDrug, dateKey) => {
+        byDrug.forEach((byDose, drug) => {
+          byDose.forEach((byDU, dose) => {
+            byDU.forEach((count, duKey) => {
+              if (count <= 0) return;
+              const [daysStr, unit] = duKey.split('|');
+              const daysVal = parseFloat(daysStr);
+              const wk = weekKeyOf(dateFromKey(dateKey));
+              const gkey = drug + '|' + dose;
+              if (!remaining.has(gkey)) {
+                remaining.set(gkey, new Map());
+                remainingUnits.set(gkey, new Set());
+                remainingMeta.set(gkey, { drug, dose });
+              }
+              const wkMap = remaining.get(gkey);
+              wkMap.set(wk, (wkMap.get(wk) || 0) + daysVal * count);
+              if (unit) remainingUnits.get(gkey).add(unit);
+            });
+          });
+        });
+      });
+
+      remaining.forEach((wkMap, key) => {
+        const { drug, dose } = remainingMeta.get(key);
+        const units = remainingUnits.get(key);
+        const s = statsFor(wkMap);
+        // unit: "日" (regular scheduled drugs) or "回" (頓服/PRN, dosed by count).
+        // Falls back to "日" for plain numeric columns with no unit text at all.
+        const unit = units.size === 1 ? [...units][0] : (units.size === 0 ? '日' : '混在');
+        const bandIdx = doseToBandIdx.get(drug)?.get(dose);
+        currentResults.push({ drug, doseDisplay: dose, unit, bandIdx, totalWeeks, ...s });
+      });
+
+      const skippedNote = skipped > 0 ? `（日時・処方日数(回数)・薬剤名・用量が不明な${skipped}件を除外）` : '';
+      const filterNote = doseFilterOn && filteredOut > 0 ? `（約束処方表に無い用量を${filteredOut}件除外）` : '';
+      const setNote = setModeOn && setInstanceTotal > 0 ? ` ｜ セット一致件数: ${setInstanceTotal}件` : '';
+      summaryEl.textContent =
+        `対象期間: ${dateStr(minDate)} 〜 ${dateStr(maxDate)}（${totalWeeks}週間） ｜ 集計パターン数: ${currentResults.length} ｜ 読み込み件数: ${validCount}件${setNote} ${skippedNote}${filterNote}`;
+
+      resultStep.style.display = 'block';
+      sortState = { key: 'rec', asc: false };
+      renderTable();
+    }
+
+    // ---------- table render / sort ----------
+    document.querySelectorAll('#result-table thead th').forEach(th => {
+      th.addEventListener('click', () => {
+        const key = th.dataset.key;
+        if (sortState.key === key) {
+          sortState.asc = !sortState.asc;
+        } else {
+          sortState.key = key;
+          sortState.asc = false;
+        }
+        renderTable();
+      });
+    });
+
+    function renderTable() {
+      document.querySelectorAll('#result-table thead th').forEach(th => {
+        th.classList.toggle('sorted', th.dataset.key === sortState.key);
+        th.classList.toggle('asc', th.dataset.key === sortState.key && sortState.asc);
+      });
+
+      const key = sortState.key;
+      const sorted = [...currentResults].sort((a, b) => {
+        let av, bv;
+        if (key === 'drug') { av = a.drug; bv = b.drug; return sortState.asc ? av.localeCompare(bv, 'ja') : bv.localeCompare(av, 'ja'); }
+        if (key === 'dose') { av = a.doseDisplay; bv = b.doseDisplay; return sortState.asc ? av.localeCompare(bv, 'ja') : bv.localeCompare(av, 'ja'); }
+        if (key === 'weeks') { av = a.nonzeroWeeks; bv = b.nonzeroWeeks; }
+        else { av = a[key]; bv = b[key]; }
+        return sortState.asc ? av - bv : bv - av;
+      });
+
+      const tbody = document.querySelector('#result-table tbody');
+      tbody.innerHTML = '';
+      sorted.forEach(r => {
+        const tr = document.createElement('tr');
+
+        const tdDrug = document.createElement('td');
+        tdDrug.className = 'drug';
+        if (r.bandIdx !== undefined && r.bandIdx !== null) {
+          const badge = document.createElement('span');
+          badge.className = 'band-badge ' + bandColorClass(r.bandIdx);
+          badge.textContent = bandLabel(r.bandIdx);
+          tdDrug.appendChild(badge);
+        }
+        tdDrug.appendChild(document.createTextNode(r.drug));
+        if (r.isSet) {
+          const tag = document.createElement('span');
+          tag.className = 'set-tag';
+          tag.textContent = 'セット';
+          tdDrug.appendChild(tag);
+        }
+
+        const tdDose = document.createElement('td');
+        tdDose.className = 'dose'; tdDose.textContent = r.doseDisplay;
+
+        const tdWeeks = document.createElement('td');
+        const lowConfidence = r.nonzeroWeeks < 3;
+        tdWeeks.textContent = `${r.nonzeroWeeks} / ${r.totalWeeks}週`;
+        if (lowConfidence) tdWeeks.classList.add('low-conf');
+        if (lowConfidence) tdWeeks.title = 'データが少なく精度が低い可能性があります';
+
+        const unitSuffix = r.unit === '混在' ? '' : r.unit;
+        const tdMean = document.createElement('td'); tdMean.textContent = fmt(r.mean) + unitSuffix;
+        const tdStd = document.createElement('td'); tdStd.textContent = fmt(r.std);
+        const tdMax = document.createElement('td'); tdMax.textContent = fmt(r.max) + unitSuffix;
+        const tdMin = document.createElement('td'); tdMin.textContent = fmt(r.min) + unitSuffix;
+
+        const tdRec = document.createElement('td');
+        tdRec.className = 'rec'; tdRec.textContent = fmt(r.rec) + unitSuffix;
+        if (r.unit === '混在') {
+          tdRec.classList.add('low-conf');
+          tdRec.title = '「日」と「回」が混在しています。列の対応を確認してください。';
+        }
+
+        tr.append(tdDrug, tdDose, tdWeeks, tdMean, tdStd, tdMax, tdMin, tdRec);
+        tbody.appendChild(tr);
+      });
+    }
+  </script>
+</body>
+</html>
