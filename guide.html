@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>使い方ガイド — 粉薬 予製量シミュレーター</title>
+<meta property="og:title" content="使い方ガイド — 粉薬 予製量シミュレーター">
+<meta property="og:description" content="はじめて使う人向けに、動画と文章で操作手順を説明します">
+<meta property="og:type" content="website">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f0f13;
+    --surface: #1a1a24;
+    --surface2: #22222f;
+    --surface3: #2c2c3d;
+    --accent: #7c6bff;
+    --accent2: #ff6b9d;
+    --text: #f0f0f8;
+    --muted: #6b6b88;
+    --prose: #b7b7d6;
+    --good: #4ade80;
+    --warn: #fbbf24;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
+    padding: 24px 24px 64px;
+    line-height: 1.6;
+  }
+
+  a { color: var(--accent); }
+
+  .top-nav {
+    width: 100%;
+    max-width: 880px;
+    display: flex;
+    align-items: center;
+  }
+  .back-link {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.85rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: color 0.15s;
+  }
+  .back-link:hover { color: var(--text); }
+
+  header.hero {
+    width: 100%;
+    max-width: 880px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .eyebrow {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  h1 {
+    font-size: 1.7rem;
+    font-weight: 700;
+    text-wrap: balance;
+  }
+  .lede {
+    color: var(--prose);
+    font-size: 0.95rem;
+    max-width: 640px;
+  }
+
+  .card {
+    background: var(--surface);
+    border-radius: 24px;
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+    width: 100%;
+    max-width: 880px;
+  }
+  .card.wide { max-width: 1000px; }
+
+  .card h2 {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  video {
+    width: 100%;
+    border-radius: 14px;
+    background: #000;
+    display: block;
+  }
+  .video-caption {
+    color: var(--muted);
+    font-size: 0.82rem;
+    line-height: 1.7;
+  }
+
+  .steps {
+    width: 100%;
+    max-width: 880px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .step-card {
+    background: var(--surface);
+    border-radius: 20px;
+    padding: 24px 26px;
+    display: flex;
+    gap: 20px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.28);
+  }
+  .step-num {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 1px solid var(--surface3);
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 1.05rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .step-body { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
+  .step-body h3 { font-size: 1rem; font-weight: 600; }
+  .step-body p { color: var(--prose); font-size: 0.88rem; }
+  .step-body ul { margin: 2px 0 0 1.1em; color: var(--prose); font-size: 0.88rem; display: flex; flex-direction: column; gap: 4px; }
+  .step-body .tip {
+    margin-top: 4px;
+    font-size: 0.8rem;
+    color: var(--muted);
+    background: var(--surface2);
+    border: 1px solid var(--surface3);
+    border-radius: 10px;
+    padding: 8px 12px;
+  }
+  .step-body .tip b { color: var(--warn); font-weight: 600; }
+  code {
+    font-family: 'Consolas', 'SF Mono', monospace;
+    background: var(--surface2);
+    border: 1px solid var(--surface3);
+    border-radius: 5px;
+    padding: 1px 6px;
+    font-size: 0.85em;
+    color: var(--text);
+  }
+
+  .band-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.82rem;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+  }
+  .band-color-0 { background: rgba(250, 204, 21, 0.18); color: #facc15; }
+  .band-color-1 { background: rgba(74, 222, 128, 0.18); color: #4ade80; }
+  .band-color-2 { background: rgba(96, 165, 250, 0.18); color: #60a5fa; }
+  .band-color-3 { background: rgba(255, 107, 157, 0.18); color: #ff6b9d; }
+
+  .col-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    margin-top: 4px;
+  }
+  .col-table th, .col-table td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--surface3);
+    vertical-align: top;
+  }
+  .col-table th { color: var(--muted); font-weight: 600; width: 30%; }
+  .col-table td { color: var(--prose); }
+
+  dl.glossary {
+    display: grid;
+    grid-template-columns: minmax(140px, max-content) 1fr;
+    gap: 12px 20px;
+  }
+  dl.glossary dt { font-weight: 700; color: var(--text); font-size: 0.9rem; white-space: nowrap; }
+  dl.glossary dd { color: var(--prose); font-size: 0.87rem; }
+
+  footer.cta {
+    width: 100%;
+    max-width: 880px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding-top: 8px;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    padding: 11px 22px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-block;
+  }
+  footer.cta p { color: var(--muted); font-size: 0.8rem; }
+
+  @media (max-width: 640px) {
+    .step-card { flex-direction: column; gap: 10px; }
+    .step-num { width: 32px; height: 32px; font-size: 0.95rem; }
+    dl.glossary { grid-template-columns: 1fr; }
+    dl.glossary dd { margin-bottom: 6px; }
+  }
+</style>
+</head>
+<body>
+
+  <nav class="top-nav">
+    <a class="back-link" href="yosei.html">← ツールに戻る</a>
+  </nav>
+
+  <header class="hero">
+    <span class="eyebrow">使い方ガイド</span>
+    <h1>粉薬 予製量シミュレーターの使い方</h1>
+    <p class="lede">過去の処方データをアップロードするだけで、体重帯・薬剤ごとに「1週間あたり何日分の予製を作ればよいか」を自動計算するツールです。はじめて使う方は、下の動画で流れをひと通り確認してから、①〜⑥の説明を読みながら実際のデータで試してみてください。</p>
+  </header>
+
+  <section class="card wide">
+    <h2>動画で見る操作の流れ</h2>
+    <video controls preload="metadata">
+      <source src="assets/guide-demo.webm" type="video/webm">
+      お使いのブラウザは動画の再生に対応していません。下の文章の説明を参考にしてください。
+    </video>
+    <p class="video-caption">サンプルデータを使った一連の操作（ファイル読み込み → 列の対応 → セット設定 → 約束処方表 → 分析条件の変更 → 結果の比較）を収録したものです。実際の処方データをアップロードすると、あなたの薬局の実績に基づいた推奨量が表示されます。</p>
+  </section>
+
+  <section class="steps">
+
+    <article class="step-card">
+      <div class="step-num">①</div>
+      <div class="step-body">
+        <h3>データを読み込む</h3>
+        <p>Excel（.xlsx）または CSV ファイルを、点線の枠にドラッグ＆ドロップするか、クリックして選択します。日時・処方内容・用量・処方日数などが入った、いつもの処方データをそのまま使えます。</p>
+        <ul>
+          <li>見出し行（列名）が無いデータの場合は「先頭行が見出しではない」にチェックを入れてください。自動判定もされます。</li>
+          <li>CSVは文字化けする場合があるので、その時は Excel形式（.xlsx）で試してください。</li>
+        </ul>
+        <div class="tip"><b>ポイント：</b> 読み込んだデータはブラウザに自動保存されるので、次回開いた時に再アップロードは不要です。新しいデータに入れ替えたい時は、新しいファイルをアップロードするか「保存データを消去してやり直す」を押してください。</div>
+      </div>
+    </article>
+
+    <article class="step-card">
+      <div class="step-num">②</div>
+      <div class="step-body">
+        <h3>列の対応を確認する</h3>
+        <p>読み込んだ表のどの列が「日時」「薬剤名」などに対応するかを選びます。多くの場合は自動で推測されるので、ズレていないか確認するだけで済みます。</p>
+        <table class="col-table">
+          <tr><th>日時</th><td>処方があった日付。週ごとの集計に使います。</td></tr>
+          <tr><th>処方内容（薬剤名）</th><td>薬剤の名前。</td></tr>
+          <tr><th>用量（必須）</th><td>1回量や1日量など。体重帯を区別するために使います。</td></tr>
+          <tr><th>用法（任意）</th><td>「分2」「分3」などの服用回数。分2/分3でセットを分けたい場合に使います。</td></tr>
+          <tr><th>処方日数（必須）</th><td>何日分処方されたか。予製量の計算のベースになります。</td></tr>
+        </table>
+      </div>
+    </article>
+
+    <article class="step-card">
+      <div class="step-num">③</div>
+      <div class="step-body">
+        <h3>セット（組み合わせ処方）を定義する（任意）</h3>
+        <p>「ムコムコ」「ムコムコアス」のように複数の薬をまとめて予製している場合、ここで組み合わせを登録すると、単剤ごとではなくセット単位で1週間あたりの必要日数を計算します。</p>
+        <ul>
+          <li>同じ日・同じ日数で処方された薬剤の組み合わせを自動的に検出してセット候補を提案します。</li>
+          <li>セットに含めなかった薬は、これまで通り単剤として個別に集計されます。</li>
+          <li>分2用と分3用のように用法が違うセットは、別のセットとして登録できます。</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="step-card">
+      <div class="step-num">④</div>
+      <div class="step-body">
+        <h3>有効な用量（約束処方表）を設定する</h3>
+        <p>体重帯ごとに正規の用量だけを登録しておく表です。ここに登録した薬剤・用量の組み合わせだけを集計対象にし、個別に量を調整した例外的な処方は結果から除外します。</p>
+        <div class="tip"><b>ポイント：</b> 対象にしたくない場合は「表にある用量だけを対象にする」のチェックを外せば、すべての用量をそのまま集計できます。</div>
+      </div>
+    </article>
+
+    <article class="step-card">
+      <div class="step-num">⑤</div>
+      <div class="step-body">
+        <h3>分析条件を選んで計算する</h3>
+        <p>分析A・分析Bの2つのパネルで、それぞれ独立した条件を設定して見比べられます。同じデータから「直近1ヶ月だけ」「安全係数を変えたら」といった違いを並べて確認できます。</p>
+        <ul>
+          <li><b style="color:var(--text)">分析期間</b>：全期間、または直近1週間〜6ヶ月に絞って計算します。季節による処方数の変化を反映したい時に使います。</li>
+          <li><b style="color:var(--text)">安全係数</b>：欠品をほぼゼロにしたい（在庫を厚めに）／バランス重視／廃棄を抑えたい（在庫を薄めに）の3つのプリセットか、カスタム値を選べます。</li>
+        </ul>
+        <p>条件を選んだら「計算する」を押すと、下に結果の表が表示されます。</p>
+      </div>
+    </article>
+
+    <article class="step-card">
+      <div class="step-num">⑥</div>
+      <div class="step-body">
+        <h3>結果を読む</h3>
+        <p>結果の表は、体重帯ごとに色分けされて表示されます（デフォルトは体重帯順。見出しをクリックすると並び替えできます）。</p>
+        <p style="margin-top:2px;">
+          <span class="band-chip band-color-0">7-10kg</span>
+          <span class="band-chip band-color-1">10-15kg</span>
+          <span class="band-chip band-color-2">15-20kg</span>
+          <span class="band-chip band-color-3">20-25kg</span>
+        </p>
+        <table class="col-table">
+          <tr><th>推奨予製量（週あたり）</th><td>この量を毎週作っておけば良い、という日数の目安。週平均 ＋ 安全係数 × 標準偏差 で計算し、小数点以下は切り上げています。</td></tr>
+          <tr><th>週平均 / 週最大</th><td>対象期間における、1週間あたりの処方日数の平均値・最大値。</td></tr>
+          <tr><th>週最小（処方時）</th><td>処方が無かった週（0日）を除いた、処方があった週の中での最小値。0日の週も含めてしまうと参考にならないため、除外しています。</td></tr>
+          <tr><th>標準偏差</th><td>週ごとの処方日数のばらつきの大きさ。大きいほど週によって必要量が変動しやすいことを示します。</td></tr>
+          <tr><th>処方があった週</th><td>対象期間の何週のうち、実際に処方があった週がいくつだったか。</td></tr>
+        </table>
+      </div>
+    </article>
+
+  </section>
+
+  <section class="card">
+    <h2>用語集</h2>
+    <dl class="glossary">
+      <dt>体重帯</dt>
+      <dd>7-10kg／10-15kg／15-20kg／20-25kgの4区分。用量の違いから自動的に判定し、色分け（黄・緑・青・ピンク）して表示します。</dd>
+
+      <dt>セット</dt>
+      <dd>複数の薬剤をまとめて1つの予製として作っている組み合わせ（例：ムコムコ＝カルボシステイン＋アンブロキソール、ムコムコアス＝それにアスベリンを加えたもの）。定義するとセット単位で必要量を計算します。</dd>
+
+      <dt>約束処方表</dt>
+      <dd>体重帯ごとの正規の用量を登録しておく表。ここに無い用量の処方は例外扱いとして集計から除外されます。</dd>
+
+      <dt>安全係数</dt>
+      <dd>週平均に上乗せする余裕分の大きさを決める係数。大きくするほど欠品しにくくなりますが、その分廃棄が増えやすくなります。</dd>
+
+      <dt>分析期間</dt>
+      <dd>集計に使うデータの範囲。全期間か、直近1週間〜6ヶ月から選びます。季節によって処方数が変わる場合、直近の期間に絞ることで実態に近い量を算出できます。</dd>
+
+      <dt>週最小 / 週最大</dt>
+      <dd>週最大は対象期間中で最も忙しかった週の処方日数。週最小は、処方が無かった週（0日）を除いた、処方があった週の中での最小値です。</dd>
+    </dl>
+  </section>
+
+  <footer class="cta">
+    <p>準備ができたら、実際の処方データでシミュレーションしてみましょう。</p>
+    <a class="btn-primary" href="yosei.html">ツールを開く →</a>
+  </footer>
+
+</body>
+</html>
