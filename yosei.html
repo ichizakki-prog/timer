@@ -170,7 +170,34 @@
     td.drug { font-weight: 600; white-space: normal; min-width: 140px; }
     td.dose { color: var(--muted); white-space: normal; max-width: 220px; }
     td.low-conf { color: var(--warn); }
-    td.set-badge { color: var(--accent2); font-weight: 700; }
+    /* Weight-band badges — matches the paper 約束処方表's colour coding */
+    .band-badge {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      white-space: nowrap;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .band-color-0 { background: rgba(250, 204, 21, 0.18); color: #facc15; }
+    .band-color-1 { background: rgba(74, 222, 128, 0.18); color: #4ade80; }
+    .band-color-2 { background: rgba(96, 165, 250, 0.18); color: #60a5fa; }
+    .band-color-3 { background: rgba(255, 107, 157, 0.18); color: #ff6b9d; }
+    .band-color-x { background: rgba(148, 163, 184, 0.18); color: var(--muted); }
+    input.band-label-input {
+      background: transparent;
+      border: none;
+      border-bottom: 1px dashed var(--surface3);
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 600;
+      width: 72px;
+      padding: 2px 0;
+    }
+    input.band-label-input:focus { outline: none; border-bottom-color: var(--accent); color: var(--text); }
+    .set-tag { color: var(--muted); font-size: 0.72rem; font-weight: 500; margin-left: 6px; }
 
     /* Set (combo) editor */
     .set-card {
@@ -334,7 +361,7 @@
           <thead>
             <tr>
               <th data-key="drug">薬剤名</th>
-              <th data-key="dose">用量(体重帯)</th>
+              <th data-key="dose">用量(g)</th>
               <th data-key="weeks">処方があった週</th>
               <th data-key="mean">週平均</th>
               <th data-key="std">標準偏差</th>
@@ -609,8 +636,8 @@
       fillSelect('map-drug', headers, drugGuess, false);
       fillSelect('map-dose', headers, doseGuess, false);
       fillSelect('map-usage', headers, usageGuess, true);
-      refreshSetAvailability();
       refreshDoseTableAvailability();
+      refreshSetAvailability();
     }
 
     // Extracts a dosing frequency ("分1"/"分2"/"分3"...) from free-text 用法
@@ -645,6 +672,20 @@
         if (h === selected) opt.selected = true;
         sel.appendChild(opt);
       });
+    }
+
+    // ---------- weight-band labels (shared across the set editor and the
+    // dose allowlist table, so "帯1" means the same weight range everywhere) ----------
+    let bandLabels = ['7-10kg', '10-15kg', '15-20kg', '20-25kg'];
+    function ensureBandLabels(n) {
+      while (bandLabels.length < n) bandLabels.push(`帯${bandLabels.length + 1}`);
+    }
+    function bandLabel(idx) {
+      ensureBandLabels(idx + 1);
+      return bandLabels[idx];
+    }
+    function bandColorClass(idx) {
+      return idx >= 0 && idx < 4 ? `band-color-${idx}` : 'band-color-x';
     }
 
     // ---------- set (combo prescription) editor ----------
@@ -710,6 +751,27 @@
 
     function seedBandRows(set) {
       if (set.drugs.length < 2) { set.bandRows = []; return; }
+
+      // Prefer the 約束処方表 (master dose allowlist, step ④) as the source of
+      // band alignment when every drug in this set is already registered
+      // there — that keeps weight-band index 0 meaning "7-10kg" (etc.)
+      // consistently across every set and the individual-drug results,
+      // instead of each set re-deriving its own (possibly differently
+      // ordered/sized) band list from raw dose frequency.
+      const masterRows = set.drugs.map(d => doseTable.find(r => r.drug === d));
+      if (masterRows.every(r => r)) {
+        const rowCount = Math.max(...masterRows.map(r => r.bands.length));
+        set.bandRows = [];
+        for (let i = 0; i < rowCount; i++) {
+          const row = {};
+          set.drugs.forEach((d, di) => { row[d] = masterRows[di].bands[i] || ''; });
+          set.bandRows.push(row);
+        }
+        return;
+      }
+
+      // Fallback (no master table entry yet for one of the drugs): derive
+      // bands directly from observed dose frequency, same as before.
       const distinctCounts = set.drugs.map(d => sortedDistinctDoses(d).length);
       const k = Math.min(10, Math.max(1, Math.min(...distinctCounts)));
       const aligned = {};
@@ -754,11 +816,11 @@
       renderSetCards();
     }
 
+    document.getElementById('map-drug').addEventListener('change', refreshDoseTableAvailability);
+    document.getElementById('map-dose').addEventListener('change', refreshDoseTableAvailability);
     document.getElementById('map-drug').addEventListener('change', refreshSetAvailability);
     document.getElementById('map-dose').addEventListener('change', refreshSetAvailability);
     document.getElementById('map-usage').addEventListener('change', () => renderSetCards());
-    document.getElementById('map-drug').addEventListener('change', refreshDoseTableAvailability);
-    document.getElementById('map-dose').addEventListener('change', refreshDoseTableAvailability);
 
     document.getElementById('set-mode-toggle').addEventListener('change', () => {
       document.getElementById('set-editor').style.display =
@@ -892,9 +954,17 @@
       table.appendChild(thead);
 
       const tbody = document.createElement('tbody');
+      ensureBandLabels(set.bandRows.length);
       set.bandRows.forEach((row, idx) => {
         const tr = document.createElement('tr');
-        const tdLabel = document.createElement('td'); tdLabel.textContent = `帯${idx + 1}`;
+        const tdLabel = document.createElement('td');
+        const labelInput = document.createElement('input');
+        labelInput.type = 'text';
+        labelInput.className = 'band-label-input';
+        labelInput.value = bandLabel(idx);
+        labelInput.addEventListener('input', () => { bandLabels[idx] = labelInput.value; });
+        labelInput.addEventListener('blur', () => { renderDoseTable(); renderSetCards(); });
+        tdLabel.appendChild(labelInput);
         tr.appendChild(tdLabel);
         set.drugs.forEach(d => {
           const td = document.createElement('td');
@@ -1028,8 +1098,16 @@
 
       const thDrug = document.createElement('th'); thDrug.textContent = '薬剤名';
       thead.appendChild(thDrug);
+      ensureBandLabels(doseBandCount);
       for (let i = 0; i < doseBandCount; i++) {
-        const th = document.createElement('th'); th.textContent = `帯${i + 1}`;
+        const th = document.createElement('th');
+        const labelInput = document.createElement('input');
+        labelInput.type = 'text';
+        labelInput.className = 'band-label-input';
+        labelInput.value = bandLabel(i);
+        labelInput.addEventListener('input', () => { bandLabels[i] = labelInput.value; });
+        labelInput.addEventListener('blur', () => { renderDoseTable(); renderSetCards(); });
+        th.appendChild(labelInput);
         thead.appendChild(th);
       }
       thead.appendChild(document.createElement('th'));
@@ -1127,9 +1205,13 @@
 
       const doseFilterOn = document.getElementById('dose-filter-toggle').checked;
       const doseAllowlist = new Map(); // drug -> Set(allowed dose strings)
+      const doseToBandIdx = new Map(); // drug -> Map(doseStr -> bandIdx), for labeling results
       doseTable.forEach(row => {
         const allowed = new Set(row.bands.filter(b => b));
         if (allowed.size) doseAllowlist.set(row.drug, allowed);
+        const byDose = new Map();
+        row.bands.forEach((dose, idx) => { if (dose) byDose.set(dose, idx); });
+        doseToBandIdx.set(row.drug, byDose);
       });
 
       // Index every valid row by date + drug + dose + (days,unit), keeping counts
@@ -1251,7 +1333,7 @@
             const s = statsFor(wkMap);
             const doseDisplay = set.drugs.map(d => bandDoses[d]).join(' + ');
             currentResults.push({
-              drug: set.name, doseDisplay, unit: sampleUnit, isSet: true,
+              drug: set.name, doseDisplay, unit: sampleUnit, isSet: true, bandIdx,
               totalWeeks, ...s
             });
           });
@@ -1292,7 +1374,8 @@
         // unit: "日" (regular scheduled drugs) or "回" (頓服/PRN, dosed by count).
         // Falls back to "日" for plain numeric columns with no unit text at all.
         const unit = units.size === 1 ? [...units][0] : (units.size === 0 ? '日' : '混在');
-        currentResults.push({ drug, doseDisplay: dose, unit, totalWeeks, ...s });
+        const bandIdx = doseToBandIdx.get(drug)?.get(dose);
+        currentResults.push({ drug, doseDisplay: dose, unit, bandIdx, totalWeeks, ...s });
       });
 
       const skippedNote = skipped > 0 ? `（日時・処方日数(回数)・薬剤名・用量が不明な${skipped}件を除外）` : '';
@@ -1343,13 +1426,19 @@
 
         const tdDrug = document.createElement('td');
         tdDrug.className = 'drug';
-        if (r.isSet) {
+        if (r.bandIdx !== undefined && r.bandIdx !== null) {
           const badge = document.createElement('span');
-          badge.className = 'set-badge';
-          badge.textContent = 'セット ';
+          badge.className = 'band-badge ' + bandColorClass(r.bandIdx);
+          badge.textContent = bandLabel(r.bandIdx);
           tdDrug.appendChild(badge);
         }
         tdDrug.appendChild(document.createTextNode(r.drug));
+        if (r.isSet) {
+          const tag = document.createElement('span');
+          tag.className = 'set-tag';
+          tag.textContent = 'セット';
+          tdDrug.appendChild(tag);
+        }
 
         const tdDose = document.createElement('td');
         tdDose.className = 'dose'; tdDose.textContent = r.doseDisplay;
