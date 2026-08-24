@@ -271,6 +271,10 @@
           <label>用量（体重帯の区別に使用・必須）</label>
           <select id="map-dose"></select>
         </div>
+        <div>
+          <label>用法（分2/分3等でセットを分ける場合に使用・任意）</label>
+          <select id="map-usage"></select>
+        </div>
       </div>
     </section>
 
@@ -576,12 +580,26 @@
       const daysGuess = guessColumn(headers, ['処方日数', '日数', '回数']);
       const drugGuess = guessColumn(headers, ['処方内容', '薬剤名', '薬品名', '品名']);
       const doseGuess = guessColumn(headers, ['用量', '容量', '分量']);
+      const usageGuess = guessColumn(headers, ['用法', '服用方法', '服薬方法']);
 
       fillSelect('map-date', headers, dateGuess, false);
       fillSelect('map-days', headers, daysGuess, false);
       fillSelect('map-drug', headers, drugGuess, false);
       fillSelect('map-dose', headers, doseGuess, false);
+      fillSelect('map-usage', headers, usageGuess, true);
       refreshSetAvailability();
+    }
+
+    // Extracts a dosing frequency ("分1"/"分2"/"分3"...) from free-text 用法
+    // like "１日３回　毎食後服用" or "分２". Returns '' when no count is found
+    // (e.g. PRN instructions like "発熱時"), which set frequency filters treat
+    // as "doesn't count toward any frequency-restricted set".
+    function parseFrequency(v) {
+      const s = String(v ?? '').trim();
+      if (!s) return '';
+      const norm = s.replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
+      const m = norm.match(/分\s*(\d)|(\d)\s*回/);
+      return m ? (m[1] || m[2]) : '';
     }
 
     function fillSelect(id, opts, selected, allowNone) {
@@ -645,8 +663,8 @@
       return [...freq.keys()].sort((a, b) => (parseNumeric(a) ?? 0) - (parseNumeric(b) ?? 0));
     }
 
-    function newSet(name, drugList) {
-      const set = { id: 'set' + (++setIdCounter), name, drugs: [...drugList], bandRows: [] };
+    function newSet(name, drugList, freq) {
+      const set = { id: 'set' + (++setIdCounter), name, drugs: [...drugList], bandRows: [], freq: freq || '' };
       seedBandRows(set);
       return set;
     }
@@ -689,7 +707,10 @@
       const asbe = find(/アスベリン/);
       if (carbo && ambro) {
         sets.push(newSet('ムコムコ', [carbo, ambro]));
-        if (asbe) sets.push(newSet('ムコムコアス', [carbo, ambro, asbe]));
+        if (asbe) {
+          sets.push(newSet('ムコムコアス(分3)', [carbo, ambro, asbe], '3'));
+          sets.push(newSet('ムコムコアス(分2)', [carbo, ambro, asbe], '2'));
+        }
       }
     }
 
@@ -712,6 +733,7 @@
 
     document.getElementById('map-drug').addEventListener('change', refreshSetAvailability);
     document.getElementById('map-dose').addEventListener('change', refreshSetAvailability);
+    document.getElementById('map-usage').addEventListener('change', () => renderSetCards());
 
     document.getElementById('set-mode-toggle').addEventListener('change', () => {
       document.getElementById('set-editor').style.display =
@@ -740,6 +762,27 @@
         nameInput.className = 'set-name-input';
         nameInput.value = set.name;
         nameInput.addEventListener('input', () => { set.name = nameInput.value; });
+
+        const freqWrap = document.createElement('label');
+        freqWrap.style.display = 'flex';
+        freqWrap.style.alignItems = 'center';
+        freqWrap.style.gap = '6px';
+        freqWrap.style.fontSize = '0.78rem';
+        freqWrap.style.color = 'var(--muted)';
+        freqWrap.textContent = '用法で絞り込み:';
+        const freqSel = document.createElement('select');
+        freqSel.className = 'set-name-input';
+        freqSel.style.width = 'auto';
+        freqSel.style.fontWeight = '400';
+        [['', '指定しない'], ['1', '分1'], ['2', '分2'], ['3', '分3'], ['4', '分4']].forEach(([val, label]) => {
+          const opt = document.createElement('option');
+          opt.value = val; opt.textContent = label;
+          if (set.freq === val) opt.selected = true;
+          freqSel.appendChild(opt);
+        });
+        freqSel.addEventListener('change', () => { set.freq = freqSel.value; });
+        freqWrap.appendChild(freqSel);
+
         const removeBtn = document.createElement('button');
         removeBtn.type = 'button';
         removeBtn.className = 'set-remove-btn';
@@ -748,8 +791,15 @@
           sets = sets.filter(s => s.id !== set.id);
           renderSetCards();
         });
-        head.append(nameInput, removeBtn);
+        head.append(nameInput, freqWrap, removeBtn);
         card.appendChild(head);
+        if (set.freq && !document.getElementById('map-usage').value) {
+          const warn = document.createElement('div');
+          warn.className = 'hint';
+          warn.style.color = 'var(--warn)';
+          warn.textContent = '「用法」の列が選択されていないため、このセットは一致しません。②で用法の列を選んでください。';
+          card.appendChild(warn);
+        }
 
         const checklist = document.createElement('div');
         checklist.className = 'drug-checklist';
@@ -889,6 +939,7 @@
       const daysCol = document.getElementById('map-days').value;
       const drugCol = document.getElementById('map-drug').value;
       const doseCol = document.getElementById('map-dose').value;
+      const usageCol = document.getElementById('map-usage').value;
 
       const summaryEl = document.getElementById('result-summary');
       const resultStep = document.getElementById('result-step');
@@ -938,7 +989,8 @@
         if (!maxDate || d > maxDate) maxDate = d;
 
         const dateKey = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-        idxAdd(dateKey, drug, dose, countInfo.value + '|' + countInfo.unit);
+        const freq = usageCol ? parseFrequency(r[usageCol]) : '';
+        idxAdd(dateKey, drug, dose, countInfo.value + '|' + countInfo.unit + '|' + freq);
       });
 
       if (!minDate || !maxDate || validCount === 0) {
@@ -996,13 +1048,14 @@
               const duMap = byDrug.get(firstDrug)?.get(bandDoses[firstDrug]);
               if (!duMap) return;
               [...duMap.keys()].forEach(duKey => {
+                const [daysStr, unit, freq] = duKey.split('|');
+                if (set.freq && freq !== set.freq) return;
                 let minCount = Infinity;
                 set.drugs.forEach(d => {
                   const m = byDrug.get(d)?.get(bandDoses[d]);
                   minCount = Math.min(minCount, m ? (m.get(duKey) || 0) : 0);
                 });
                 if (!isFinite(minCount) || minCount <= 0) return;
-                const [daysStr, unit] = duKey.split('|');
                 const daysVal = parseFloat(daysStr);
                 set.drugs.forEach(d => {
                   const m = byDrug.get(d).get(bandDoses[d]);
