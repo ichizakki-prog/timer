@@ -120,16 +120,25 @@
     max-width: 880px;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 10px;
   }
   .step-card {
     background: var(--surface);
     border-radius: 20px;
-    padding: 24px 26px;
-    display: flex;
-    gap: 20px;
     box-shadow: 0 8px 40px rgba(0,0,0,0.28);
+    overflow: hidden;
   }
+  .step-card summary {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 18px 26px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .step-card summary::-webkit-details-marker { display: none; }
+  .step-card summary:hover .step-title { color: var(--accent); }
   .step-num {
     flex-shrink: 0;
     width: 40px;
@@ -144,8 +153,22 @@
     align-items: center;
     justify-content: center;
   }
-  .step-body { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
-  .step-body h3 { font-size: 1rem; font-weight: 600; }
+  .step-title { font-size: 1rem; font-weight: 600; transition: color 0.15s; }
+  .step-chevron {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 0.75rem;
+    transition: transform 0.2s;
+    flex-shrink: 0;
+  }
+  .step-card[open] .step-chevron { transform: rotate(180deg); }
+  .step-card[open] summary { border-bottom: 1px solid var(--surface3); }
+  .step-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 18px 26px 24px calc(26px + 40px + 18px);
+  }
   .step-body p { color: var(--prose); font-size: 0.88rem; }
   .step-body ul { margin: 2px 0 0 1.1em; color: var(--prose); font-size: 0.88rem; display: flex; flex-direction: column; gap: 4px; }
   .step-body .tip {
@@ -229,8 +252,9 @@
   footer.cta p { color: var(--muted); font-size: 0.8rem; }
 
   @media (max-width: 640px) {
-    .step-card { flex-direction: column; gap: 10px; }
+    .step-card summary { padding: 16px 18px; gap: 12px; }
     .step-num { width: 32px; height: 32px; font-size: 0.95rem; }
+    .step-body { padding: 14px 18px 20px; }
     dl.glossary { grid-template-columns: 1fr; }
     dl.glossary dd { margin-bottom: 6px; }
   }
@@ -259,10 +283,13 @@
 
   <section class="steps">
 
-    <article class="step-card">
-      <div class="step-num">①</div>
+    <details class="step-card" open>
+      <summary>
+        <span class="step-num">①</span>
+        <span class="step-title">データの読み込み方</span>
+        <span class="step-chevron">▾</span>
+      </summary>
       <div class="step-body">
-        <h3>データを読み込む</h3>
         <p>Excel（.xlsx）または CSV ファイルを、点線の枠にドラッグ＆ドロップするか、クリックして選択します。日時・処方内容・用量・処方日数などが入った、いつもの処方データをそのまま使えます。</p>
         <ul>
           <li>見出し行（列名）が無いデータの場合は「先頭行が見出しではない」にチェックを入れてください。自動判定もされます。</li>
@@ -270,12 +297,15 @@
         </ul>
         <div class="tip"><b>ポイント：</b> 読み込んだデータはブラウザに自動保存されるので、次回開いた時に再アップロードは不要です。新しいデータに入れ替えたい時は、新しいファイルをアップロードするか「保存データを消去してやり直す」を押してください。</div>
       </div>
-    </article>
+    </details>
 
-    <article class="step-card">
-      <div class="step-num">②</div>
+    <details class="step-card">
+      <summary>
+        <span class="step-num">②</span>
+        <span class="step-title">列の対応のしかた</span>
+        <span class="step-chevron">▾</span>
+      </summary>
       <div class="step-body">
-        <h3>列の対応を確認する</h3>
         <p>読み込んだ表のどの列が「日時」「薬剤名」などに対応するかを選びます。多くの場合は自動で推測されるので、ズレていないか確認するだけで済みます。</p>
         <table class="col-table">
           <tr><th>日時</th><td>処方があった日付。週ごとの集計に使います。</td></tr>
@@ -285,12 +315,15 @@
           <tr><th>処方日数（必須）</th><td>何日分処方されたか。予製量の計算のベースになります。</td></tr>
         </table>
       </div>
-    </article>
+    </details>
 
-    <article class="step-card">
-      <div class="step-num">③</div>
+    <details class="step-card">
+      <summary>
+        <span class="step-num">③</span>
+        <span class="step-title">セットの使い方（任意）</span>
+        <span class="step-chevron">▾</span>
+      </summary>
       <div class="step-body">
-        <h3>セット（組み合わせ処方）を定義する（任意）</h3>
         <p>「ムコムコ」「ムコムコアス」のように複数の薬をまとめて予製している場合、ここで組み合わせを登録すると、単剤ごとではなくセット単位で1週間あたりの必要日数を計算します。</p>
         <ul>
           <li>同じ日・同じ日数で処方された薬剤の組み合わせを自動的に検出してセット候補を提案します。</li>
@@ -298,21 +331,27 @@
           <li>分2用と分3用のように用法が違うセットは、別のセットとして登録できます。</li>
         </ul>
       </div>
-    </article>
+    </details>
 
-    <article class="step-card">
-      <div class="step-num">④</div>
+    <details class="step-card">
+      <summary>
+        <span class="step-num">④</span>
+        <span class="step-title">約束処方表の使い方</span>
+        <span class="step-chevron">▾</span>
+      </summary>
       <div class="step-body">
-        <h3>有効な用量（約束処方表）を設定する</h3>
         <p>体重帯ごとに正規の用量だけを登録しておく表です。ここに登録した薬剤・用量の組み合わせだけを集計対象にし、個別に量を調整した例外的な処方は結果から除外します。</p>
         <div class="tip"><b>ポイント：</b> 対象にしたくない場合は「表にある用量だけを対象にする」のチェックを外せば、すべての用量をそのまま集計できます。</div>
       </div>
-    </article>
+    </details>
 
-    <article class="step-card">
-      <div class="step-num">⑤</div>
+    <details class="step-card">
+      <summary>
+        <span class="step-num">⑤</span>
+        <span class="step-title">分析条件の使い方</span>
+        <span class="step-chevron">▾</span>
+      </summary>
       <div class="step-body">
-        <h3>分析条件を選んで計算する</h3>
         <p>分析A・分析Bの2つのパネルで、それぞれ独立した条件を設定して見比べられます。同じデータから「直近1ヶ月だけ」「安全係数を変えたら」といった違いを並べて確認できます。</p>
         <ul>
           <li><b style="color:var(--text)">分析期間</b>：全期間、または直近1週間〜6ヶ月に絞って計算します。季節による処方数の変化を反映したい時に使います。</li>
@@ -320,12 +359,15 @@
         </ul>
         <p>条件を選んだら「計算する」を押すと、下に結果の表が表示されます。</p>
       </div>
-    </article>
+    </details>
 
-    <article class="step-card">
-      <div class="step-num">⑥</div>
+    <details class="step-card">
+      <summary>
+        <span class="step-num">⑥</span>
+        <span class="step-title">結果の読み方</span>
+        <span class="step-chevron">▾</span>
+      </summary>
       <div class="step-body">
-        <h3>結果を読む</h3>
         <p>結果の表は、体重帯ごとに色分けされて表示されます（デフォルトは体重帯順。見出しをクリックすると並び替えできます）。</p>
         <p style="margin-top:2px;">
           <span class="band-chip band-color-0">7-10kg</span>
@@ -341,7 +383,7 @@
           <tr><th>処方があった週</th><td>対象期間の何週のうち、実際に処方があった週がいくつだったか。</td></tr>
         </table>
       </div>
-    </article>
+    </details>
 
   </section>
 
