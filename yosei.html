@@ -360,6 +360,7 @@
         <table id="result-table">
           <thead>
             <tr>
+              <th data-key="band" class="sorted asc">体重帯</th>
               <th data-key="drug">薬剤名</th>
               <th data-key="dose">用量(g)</th>
               <th data-key="weeks">処方があった週</th>
@@ -367,7 +368,7 @@
               <th data-key="std">標準偏差</th>
               <th data-key="max">週最大</th>
               <th data-key="min">週最小</th>
-              <th data-key="rec" class="sorted">推奨予製量(週あたり)</th>
+              <th data-key="rec">推奨予製量(週あたり)</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -383,7 +384,7 @@
     let headers = [];
     let rows = [];
     let currentResults = [];
-    let sortState = { key: 'rec', asc: false };
+    let sortState = { key: 'band', asc: true };
 
     // ---------- helpers ----------
     function pad2(n) { return String(n).padStart(2, '0'); }
@@ -686,6 +687,23 @@
     }
     function bandColorClass(idx) {
       return idx >= 0 && idx < 4 ? `band-color-${idx}` : 'band-color-x';
+    }
+
+    // Preferred display order within a weight band, as requested: sets and
+    // drugs the pharmacy actually cares about first, in this fixed order;
+    // anything else (e.g. a bare アスベリン leftover) falls to the end.
+    const RESULT_PRIORITY = [
+      r => r.isSet && /ムコムコアス/.test(r.drug) && /分3/.test(r.drug),
+      r => !r.isSet && /ホクナリン/.test(r.drug),
+      r => !r.isSet && /カロナール/.test(r.drug),
+      r => !r.isSet && /ミヤ.?[BbＢ][MmＭ]/.test(r.drug),
+      r => r.isSet && /ムコムコ/.test(r.drug) && !/アス/.test(r.drug),
+      r => !r.isSet && /トランサミン/.test(r.drug),
+      r => r.isSet && /ムコムコアス/.test(r.drug) && /分2/.test(r.drug),
+    ];
+    function resultPriority(r) {
+      const i = RESULT_PRIORITY.findIndex(test => test(r));
+      return i === -1 ? RESULT_PRIORITY.length : i;
     }
 
     // ---------- set (combo prescription) editor ----------
@@ -1385,7 +1403,8 @@
         `対象期間: ${dateStr(minDate)} 〜 ${dateStr(maxDate)}（${totalWeeks}週間） ｜ 集計パターン数: ${currentResults.length} ｜ 読み込み件数: ${validCount}件${setNote} ${skippedNote}${filterNote}`;
 
       resultStep.style.display = 'block';
-      sortState = { key: 'rec', asc: false };
+      // Keep whatever sort the user last chose across recalculations; only
+      // the very first render defaults to 体重帯 (set at declaration above).
       renderTable();
     }
 
@@ -1412,6 +1431,13 @@
       const key = sortState.key;
       const sorted = [...currentResults].sort((a, b) => {
         let av, bv;
+        if (key === 'band') {
+          av = a.bandIdx ?? Infinity; bv = b.bandIdx ?? Infinity;
+          const bandCmp = sortState.asc ? av - bv : bv - av;
+          // Within the same weight band, always use the fixed priority
+          // order (ムコムコアス分3 → ホクナリン → … ), regardless of asc/desc.
+          return bandCmp !== 0 ? bandCmp : resultPriority(a) - resultPriority(b);
+        }
         if (key === 'drug') { av = a.drug; bv = b.drug; return sortState.asc ? av.localeCompare(bv, 'ja') : bv.localeCompare(av, 'ja'); }
         if (key === 'dose') { av = a.doseDisplay; bv = b.doseDisplay; return sortState.asc ? av.localeCompare(bv, 'ja') : bv.localeCompare(av, 'ja'); }
         if (key === 'weeks') { av = a.nonzeroWeeks; bv = b.nonzeroWeeks; }
@@ -1424,14 +1450,18 @@
       sorted.forEach(r => {
         const tr = document.createElement('tr');
 
-        const tdDrug = document.createElement('td');
-        tdDrug.className = 'drug';
+        const tdBand = document.createElement('td');
         if (r.bandIdx !== undefined && r.bandIdx !== null) {
           const badge = document.createElement('span');
           badge.className = 'band-badge ' + bandColorClass(r.bandIdx);
           badge.textContent = bandLabel(r.bandIdx);
-          tdDrug.appendChild(badge);
+          tdBand.appendChild(badge);
+        } else {
+          tdBand.textContent = '-';
         }
+
+        const tdDrug = document.createElement('td');
+        tdDrug.className = 'drug';
         tdDrug.appendChild(document.createTextNode(r.drug));
         if (r.isSet) {
           const tag = document.createElement('span');
@@ -1462,7 +1492,7 @@
           tdRec.title = '「日」と「回」が混在しています。列の対応を確認してください。';
         }
 
-        tr.append(tdDrug, tdDose, tdWeeks, tdMean, tdStd, tdMax, tdMin, tdRec);
+        tr.append(tdBand, tdDrug, tdDose, tdWeeks, tdMean, tdStd, tdMax, tdMin, tdRec);
         tbody.appendChild(tr);
       });
     }
