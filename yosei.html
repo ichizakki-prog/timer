@@ -378,7 +378,18 @@
     </section>
 
     <section class="step" id="settings-step" style="display:none">
-      <h2>⑤ 安全係数を選んで計算</h2>
+      <h2>⑤ 分析期間・安全係数を選んで計算</h2>
+      <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:14px;">
+        <label class="hint" style="margin:0;">分析期間（季節変動を考慮したい場合は、直近の期間だけに絞れます）</label>
+        <select id="period-filter" style="max-width:420px;">
+          <option value="">全期間（アップロードした全データ）</option>
+          <option value="7">直近1週間</option>
+          <option value="21">直近3週間</option>
+          <option value="30">直近1ヶ月</option>
+          <option value="91">直近3ヶ月</option>
+          <option value="182">直近6ヶ月</option>
+        </select>
+      </div>
       <select id="safety-preset">
         <option value="1.65">欠品をほぼゼロにしたい（欠品率の目安 約5%）</option>
         <option value="1.28" selected>バランス重視（標準・推奨）</option>
@@ -1317,7 +1328,25 @@
 
       const z = getZ();
       let minDate = null, maxDate = null;
-      let validCount = 0, skipped = 0, filteredOut = 0;
+      let validCount = 0, skipped = 0, filteredOut = 0, periodExcluded = 0;
+
+      // Period filter: restricts analysis to the N days leading up to the
+      // most recent date actually present in the data (not "today"), so
+      // re-running this periodically with fresh exports naturally tracks
+      // the current season instead of averaging the whole file together.
+      const periodDays = parseInt(document.getElementById('period-filter').value, 10) || null;
+      let periodCutoff = null;
+      if (periodDays) {
+        let rawMax = null;
+        rows.forEach(r => {
+          const d = parseFlexibleDate(r[dateCol]);
+          if (d && (!rawMax || d > rawMax)) rawMax = d;
+        });
+        if (rawMax) {
+          periodCutoff = new Date(rawMax);
+          periodCutoff.setDate(periodCutoff.getDate() - periodDays + 1);
+        }
+      }
 
       const doseFilterOn = document.getElementById('dose-filter-toggle').checked;
       const doseAllowlist = new Map(); // drug -> Set(allowed dose strings)
@@ -1356,6 +1385,7 @@
         const dose = String(r[doseCol] ?? '').trim();
 
         if (!d || !countInfo || !drug || !dose) { skipped++; return; }
+        if (periodCutoff && d < periodCutoff) { periodExcluded++; return; }
         if (doseFilterOn) {
           const allowed = doseAllowlist.get(drug);
           if (!allowed || !allowed.has(dose)) { filteredOut++; return; }
@@ -1497,8 +1527,11 @@
       const skippedNote = skipped > 0 ? `（日時・処方日数(回数)・薬剤名・用量が不明な${skipped}件を除外）` : '';
       const filterNote = doseFilterOn && filteredOut > 0 ? `（約束処方表に無い用量を${filteredOut}件除外）` : '';
       const setNote = setModeOn && setInstanceTotal > 0 ? ` ｜ セット一致件数: ${setInstanceTotal}件` : '';
+      const periodSel = document.getElementById('period-filter');
+      const periodLabel = periodSel.options[periodSel.selectedIndex].textContent;
+      const periodNote = periodDays ? `分析期間: ${periodLabel} ｜ ` : '';
       summaryEl.textContent =
-        `対象期間: ${dateStr(minDate)} 〜 ${dateStr(maxDate)}（${totalWeeks}週間） ｜ 集計パターン数: ${currentResults.length} ｜ 読み込み件数: ${validCount}件${setNote} ${skippedNote}${filterNote}`;
+        `${periodNote}対象期間: ${dateStr(minDate)} 〜 ${dateStr(maxDate)}（${totalWeeks}週間） ｜ 集計パターン数: ${currentResults.length} ｜ 読み込み件数: ${validCount}件${setNote} ${skippedNote}${filterNote}`;
 
       resultStep.style.display = 'block';
       // Keep whatever sort the user last chose across recalculations; only
