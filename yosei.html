@@ -57,7 +57,7 @@
       gap: 26px;
       box-shadow: 0 8px 40px rgba(0,0,0,0.4);
       width: 100%;
-      max-width: 920px;
+      max-width: 1400px;
     }
 
     .step h2 {
@@ -163,8 +163,37 @@
     .dropdown-item:hover { background: var(--surface3); }
     .dropdown-item.active { background: var(--surface3); color: var(--accent); font-weight: 600; }
 
-    #safety-preset { width: 100%; max-width: 420px; }
-    #safety-custom { width: 140px; margin-top: 10px; }
+    [id^="safety-preset"] { width: 100%; }
+    [id^="safety-custom"] { width: 140px; margin-top: 10px; }
+    [id^="period-filter"] { max-width: 100%; }
+
+    /* Side-by-side comparison panels (⑤) */
+    .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+    @media (max-width: 760px) {
+      .compare-grid { grid-template-columns: 1fr; }
+    }
+    .compare-panel {
+      background: var(--surface2);
+      border: 1px solid var(--surface3);
+      border-radius: 16px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    .compare-panel h3 {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.04em;
+      margin-bottom: 12px;
+    }
+    .compare-panel .table-wrap { min-width: 0; }
 
     .btn-primary {
       border: none;
@@ -378,49 +407,95 @@
     </section>
 
     <section class="step" id="settings-step" style="display:none">
-      <h2>⑤ 分析期間・安全係数を選んで計算</h2>
-      <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:14px;">
-        <label class="hint" style="margin:0;">分析期間（季節変動を考慮したい場合は、直近の期間だけに絞れます）</label>
-        <select id="period-filter" style="max-width:420px;">
-          <option value="">全期間（アップロードした全データ）</option>
-          <option value="7">直近1週間</option>
-          <option value="21">直近3週間</option>
-          <option value="30">直近1ヶ月</option>
-          <option value="91">直近3ヶ月</option>
-          <option value="182">直近6ヶ月</option>
-        </select>
-      </div>
-      <select id="safety-preset">
-        <option value="1.65">欠品をほぼゼロにしたい（欠品率の目安 約5%）</option>
-        <option value="1.28" selected>バランス重視（標準・推奨）</option>
-        <option value="0.67">廃棄を抑えたい（欠品率の目安 約25%許容）</option>
-        <option value="custom">カスタム係数を入力</option>
-      </select>
-      <input type="number" id="safety-custom" step="0.1" value="1.0" style="display:none" placeholder="係数 (例: 1.0)">
-      <p class="hint">「処方内容×用量」の組み合わせ（＝体重帯ごとの予製パターン）ごとに算出します。<br>推奨予製量（日数/週） = 週平均処方日数 ＋ 安全係数 × 標準偏差　（小数点以下は切り上げ）</p>
-      <button class="btn-primary" id="calc-btn">計算する</button>
-    </section>
+      <h2>⑤ 分析条件を選んで計算（AとBを見比べられます）</h2>
+      <div class="compare-grid">
+        <div class="compare-panel" id="panel-a">
+          <h3>分析 A</h3>
+          <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:14px;">
+            <label class="hint" style="margin:0;">分析期間（季節変動を考慮したい場合は、直近の期間だけに絞れます）</label>
+            <select id="period-filter-a">
+              <option value="">全期間（アップロードした全データ）</option>
+              <option value="7">直近1週間</option>
+              <option value="21">直近3週間</option>
+              <option value="30">直近1ヶ月</option>
+              <option value="91">直近3ヶ月</option>
+              <option value="182">直近6ヶ月</option>
+            </select>
+          </div>
+          <select id="safety-preset-a">
+            <option value="1.65">欠品をほぼゼロにしたい（欠品率の目安 約5%）</option>
+            <option value="1.28" selected>バランス重視（標準・推奨）</option>
+            <option value="0.67">廃棄を抑えたい（欠品率の目安 約25%許容）</option>
+            <option value="custom">カスタム係数を入力</option>
+          </select>
+          <input type="number" id="safety-custom-a" step="0.1" value="1.0" style="display:none" placeholder="係数 (例: 1.0)">
+          <p class="hint">推奨予製量（日数/週） = 週平均処方日数 ＋ 安全係数 × 標準偏差　（小数点以下は切り上げ）</p>
+          <button class="btn-primary" id="calc-btn-a">計算する</button>
 
-    <section class="step" id="result-step" style="display:none">
-      <h2>⑥ 結果</h2>
-      <div class="hint" id="result-summary"></div>
-      <div class="table-wrap">
-        <table id="result-table">
-          <thead>
-            <tr>
-              <th data-key="band" class="sorted asc">体重帯</th>
-              <th data-key="drug">薬剤名</th>
-              <th data-key="dose">用量(g)</th>
-              <th data-key="weeks">処方があった週</th>
-              <th data-key="mean">週平均</th>
-              <th data-key="std">標準偏差</th>
-              <th data-key="max">週最大</th>
-              <th data-key="min">週最小</th>
-              <th data-key="rec">推奨予製量(週あたり)</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+          <div class="hint" id="result-summary-a" style="margin-top:18px;"></div>
+          <div class="table-wrap">
+            <table id="result-table-a">
+              <thead>
+                <tr>
+                  <th data-key="band" class="sorted asc">体重帯</th>
+                  <th data-key="drug">薬剤名</th>
+                  <th data-key="dose">用量(g)</th>
+                  <th data-key="weeks">処方があった週</th>
+                  <th data-key="mean">週平均</th>
+                  <th data-key="std">標準偏差</th>
+                  <th data-key="max">週最大</th>
+                  <th data-key="min">週最小</th>
+                  <th data-key="rec">推奨予製量(週あたり)</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="compare-panel" id="panel-b">
+          <h3>分析 B</h3>
+          <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:14px;">
+            <label class="hint" style="margin:0;">分析期間（季節変動を考慮したい場合は、直近の期間だけに絞れます）</label>
+            <select id="period-filter-b">
+              <option value="">全期間（アップロードした全データ）</option>
+              <option value="7">直近1週間</option>
+              <option value="21">直近3週間</option>
+              <option value="30" selected>直近1ヶ月</option>
+              <option value="91">直近3ヶ月</option>
+              <option value="182">直近6ヶ月</option>
+            </select>
+          </div>
+          <select id="safety-preset-b">
+            <option value="1.65" selected>欠品をほぼゼロにしたい（欠品率の目安 約5%）</option>
+            <option value="1.28">バランス重視（標準・推奨）</option>
+            <option value="0.67">廃棄を抑えたい（欠品率の目安 約25%許容）</option>
+            <option value="custom">カスタム係数を入力</option>
+          </select>
+          <input type="number" id="safety-custom-b" step="0.1" value="1.0" style="display:none" placeholder="係数 (例: 1.0)">
+          <p class="hint">推奨予製量（日数/週） = 週平均処方日数 ＋ 安全係数 × 標準偏差　（小数点以下は切り上げ）</p>
+          <button class="btn-primary" id="calc-btn-b">計算する</button>
+
+          <div class="hint" id="result-summary-b" style="margin-top:18px;"></div>
+          <div class="table-wrap">
+            <table id="result-table-b">
+              <thead>
+                <tr>
+                  <th data-key="band" class="sorted asc">体重帯</th>
+                  <th data-key="drug">薬剤名</th>
+                  <th data-key="dose">用量(g)</th>
+                  <th data-key="weeks">処方があった週</th>
+                  <th data-key="mean">週平均</th>
+                  <th data-key="std">標準偏差</th>
+                  <th data-key="max">週最大</th>
+                  <th data-key="min">週最小</th>
+                  <th data-key="rec">推奨予製量(週あたり)</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </section>
   </div>
@@ -431,8 +506,11 @@
     let workbook = null;
     let headers = [];
     let rows = [];
-    let currentResults = [];
-    let sortState = { key: 'band', asc: true };
+    // Two independent comparison panels (⑤ analysis A / B) — each keeps its
+    // own computed results and sort state, sharing everything upstream
+    // (column mapping, sets, dose allowlist).
+    let panelResults = { a: [], b: [] };
+    let panelSortState = { a: { key: 'band', asc: true }, b: { key: 'band', asc: true } };
 
     // ---------- helpers ----------
     function pad2(n) { return String(n).padStart(2, '0'); }
@@ -624,7 +702,10 @@
       populateMapping();
       document.getElementById('mapping-step').style.display = 'block';
       document.getElementById('settings-step').style.display = 'block';
-      document.getElementById('result-step').style.display = 'none';
+      ['a', 'b'].forEach(panel => {
+        document.getElementById('result-summary-' + panel).textContent = '';
+        document.querySelector('#result-table-' + panel + ' tbody').innerHTML = '';
+      });
     }
 
     noHeaderToggle.addEventListener('change', () => {
@@ -1290,43 +1371,46 @@
       });
     }
 
-    // ---------- safety factor ----------
-    const safetyPreset = document.getElementById('safety-preset');
-    const safetyCustom = document.getElementById('safety-custom');
-    safetyPreset.addEventListener('change', () => {
-      safetyCustom.style.display = safetyPreset.value === 'custom' ? 'inline-block' : 'none';
+    // ---------- safety factor (per comparison panel) ----------
+    ['a', 'b'].forEach(panel => {
+      const preset = document.getElementById('safety-preset-' + panel);
+      const custom = document.getElementById('safety-custom-' + panel);
+      preset.addEventListener('change', () => {
+        custom.style.display = preset.value === 'custom' ? 'inline-block' : 'none';
+      });
     });
-    function getZ() {
-      if (safetyPreset.value === 'custom') {
-        const v = parseFloat(safetyCustom.value);
+    function getZ(panel) {
+      const preset = document.getElementById('safety-preset-' + panel);
+      if (preset.value === 'custom') {
+        const v = parseFloat(document.getElementById('safety-custom-' + panel).value);
         return isNaN(v) ? 0 : v;
       }
-      return parseFloat(safetyPreset.value);
+      return parseFloat(preset.value);
     }
 
     // ---------- calculation ----------
-    document.getElementById('calc-btn').addEventListener('click', calculate);
+    document.getElementById('calc-btn-a').addEventListener('click', () => calculate('a'));
+    document.getElementById('calc-btn-b').addEventListener('click', () => calculate('b'));
 
-    function calculate() {
+    function calculate(panel) {
       const dateCol = document.getElementById('map-date').value;
       const daysCol = document.getElementById('map-days').value;
       const drugCol = document.getElementById('map-drug').value;
       const doseCol = document.getElementById('map-dose').value;
       const usageCol = document.getElementById('map-usage').value;
 
-      const summaryEl = document.getElementById('result-summary');
-      const resultStep = document.getElementById('result-step');
+      const summaryEl = document.getElementById('result-summary-' + panel);
+      const tbodyEl = document.querySelector('#result-table-' + panel + ' tbody');
 
       if (!dateCol || !daysCol || !drugCol || !doseCol) {
-        resultStep.style.display = 'block';
         summaryEl.classList.add('error');
         summaryEl.textContent = '「日時」「処方日数」「処方内容」「用量」の列をすべて選択してください（用量は体重帯を区別するために必要です）。';
-        document.querySelector('#result-table tbody').innerHTML = '';
+        tbodyEl.innerHTML = '';
         return;
       }
       summaryEl.classList.remove('error');
 
-      const z = getZ();
+      const z = getZ(panel);
       let minDate = null, maxDate = null;
       let validCount = 0, skipped = 0, filteredOut = 0, periodExcluded = 0;
 
@@ -1334,7 +1418,7 @@
       // most recent date actually present in the data (not "today"), so
       // re-running this periodically with fresh exports naturally tracks
       // the current season instead of averaging the whole file together.
-      const periodDays = parseInt(document.getElementById('period-filter').value, 10) || null;
+      const periodDays = parseInt(document.getElementById('period-filter-' + panel).value, 10) || null;
       let periodCutoff = null;
       if (periodDays) {
         let rawMax = null;
@@ -1401,10 +1485,9 @@
       });
 
       if (!minDate || !maxDate || validCount === 0) {
-        resultStep.style.display = 'block';
         summaryEl.classList.add('error');
         summaryEl.textContent = '有効なデータが見つかりませんでした。列の対応を確認してください。';
-        document.querySelector('#result-table tbody').innerHTML = '';
+        tbodyEl.innerHTML = '';
         return;
       }
 
@@ -1434,7 +1517,7 @@
         };
       }
 
-      currentResults = [];
+      const results = [];
       let setInstanceTotal = 0;
 
       const setModeOn = document.getElementById('set-mode-toggle').checked;
@@ -1478,7 +1561,7 @@
             if (!anyMatch) return;
             const s = statsFor(wkMap);
             const doseDisplay = set.drugs.map(d => bandDoses[d]).join(' + ');
-            currentResults.push({
+            results.push({
               drug: set.name, doseDisplay, unit: sampleUnit, isSet: true, bandIdx,
               totalWeeks, ...s
             });
@@ -1521,62 +1604,67 @@
         // Falls back to "日" for plain numeric columns with no unit text at all.
         const unit = units.size === 1 ? [...units][0] : (units.size === 0 ? '日' : '混在');
         const bandIdx = doseToBandIdx.get(drug)?.get(dose);
-        currentResults.push({ drug, doseDisplay: dose, unit, bandIdx, totalWeeks, ...s });
+        results.push({ drug, doseDisplay: dose, unit, bandIdx, totalWeeks, ...s });
       });
 
       const skippedNote = skipped > 0 ? `（日時・処方日数(回数)・薬剤名・用量が不明な${skipped}件を除外）` : '';
       const filterNote = doseFilterOn && filteredOut > 0 ? `（約束処方表に無い用量を${filteredOut}件除外）` : '';
       const setNote = setModeOn && setInstanceTotal > 0 ? ` ｜ セット一致件数: ${setInstanceTotal}件` : '';
-      const periodSel = document.getElementById('period-filter');
+      const periodSel = document.getElementById('period-filter-' + panel);
       const periodLabel = periodSel.options[periodSel.selectedIndex].textContent;
       const periodNote = periodDays ? `分析期間: ${periodLabel} ｜ ` : '';
       summaryEl.textContent =
-        `${periodNote}対象期間: ${dateStr(minDate)} 〜 ${dateStr(maxDate)}（${totalWeeks}週間） ｜ 集計パターン数: ${currentResults.length} ｜ 読み込み件数: ${validCount}件${setNote} ${skippedNote}${filterNote}`;
+        `${periodNote}対象期間: ${dateStr(minDate)} 〜 ${dateStr(maxDate)}（${totalWeeks}週間） ｜ 集計パターン数: ${results.length} ｜ 読み込み件数: ${validCount}件${setNote} ${skippedNote}${filterNote}`;
 
-      resultStep.style.display = 'block';
+      panelResults[panel] = results;
       // Keep whatever sort the user last chose across recalculations; only
       // the very first render defaults to 体重帯 (set at declaration above).
-      renderTable();
+      renderTable(panel);
     }
 
     // ---------- table render / sort ----------
-    document.querySelectorAll('#result-table thead th').forEach(th => {
-      th.addEventListener('click', () => {
-        const key = th.dataset.key;
-        if (sortState.key === key) {
-          sortState.asc = !sortState.asc;
-        } else {
-          sortState.key = key;
-          sortState.asc = false;
-        }
-        renderTable();
+    ['a', 'b'].forEach(panel => {
+      document.querySelectorAll('#result-table-' + panel + ' thead th').forEach(th => {
+        th.addEventListener('click', () => {
+          const state = panelSortState[panel];
+          const key = th.dataset.key;
+          if (state.key === key) {
+            state.asc = !state.asc;
+          } else {
+            state.key = key;
+            state.asc = false;
+          }
+          renderTable(panel);
+        });
       });
     });
 
-    function renderTable() {
-      document.querySelectorAll('#result-table thead th').forEach(th => {
-        th.classList.toggle('sorted', th.dataset.key === sortState.key);
-        th.classList.toggle('asc', th.dataset.key === sortState.key && sortState.asc);
+    function renderTable(panel) {
+      const state = panelSortState[panel];
+      const thead = document.querySelectorAll('#result-table-' + panel + ' thead th');
+      thead.forEach(th => {
+        th.classList.toggle('sorted', th.dataset.key === state.key);
+        th.classList.toggle('asc', th.dataset.key === state.key && state.asc);
       });
 
-      const key = sortState.key;
-      const sorted = [...currentResults].sort((a, b) => {
+      const key = state.key;
+      const sorted = [...panelResults[panel]].sort((a, b) => {
         let av, bv;
         if (key === 'band') {
           av = a.bandIdx ?? Infinity; bv = b.bandIdx ?? Infinity;
-          const bandCmp = sortState.asc ? av - bv : bv - av;
+          const bandCmp = state.asc ? av - bv : bv - av;
           // Within the same weight band, always use the fixed priority
           // order (ムコムコアス分3 → ホクナリン → … ), regardless of asc/desc.
           return bandCmp !== 0 ? bandCmp : resultPriority(a) - resultPriority(b);
         }
-        if (key === 'drug') { av = a.drug; bv = b.drug; return sortState.asc ? av.localeCompare(bv, 'ja') : bv.localeCompare(av, 'ja'); }
-        if (key === 'dose') { av = a.doseDisplay; bv = b.doseDisplay; return sortState.asc ? av.localeCompare(bv, 'ja') : bv.localeCompare(av, 'ja'); }
+        if (key === 'drug') { av = a.drug; bv = b.drug; return state.asc ? av.localeCompare(bv, 'ja') : bv.localeCompare(av, 'ja'); }
+        if (key === 'dose') { av = a.doseDisplay; bv = b.doseDisplay; return state.asc ? av.localeCompare(bv, 'ja') : bv.localeCompare(av, 'ja'); }
         if (key === 'weeks') { av = a.nonzeroWeeks; bv = b.nonzeroWeeks; }
         else { av = a[key]; bv = b[key]; }
-        return sortState.asc ? av - bv : bv - av;
+        return state.asc ? av - bv : bv - av;
       });
 
-      const tbody = document.querySelector('#result-table tbody');
+      const tbody = document.querySelector('#result-table-' + panel + ' tbody');
       tbody.innerHTML = '';
       sorted.forEach(r => {
         const tr = document.createElement('tr');
