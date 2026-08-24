@@ -116,6 +116,53 @@
     .mapping-grid label { font-size: 0.75rem; color: var(--muted); }
     .mapping-grid select { width: 100%; }
 
+    /* Custom dropdown for the column-mapping selects — a native <select>'s
+       popup direction is decided by the browser (it flips upward when short
+       on space below), which isn't controllable via CSS. This version is a
+       plain positioned element, so it always opens downward as requested. */
+    .dropdown-wrap { position: relative; width: 100%; }
+    .dropdown-btn {
+      width: 100%;
+      text-align: left;
+      background: var(--surface2);
+      border: 1px solid var(--surface3);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .dropdown-btn::after { content: '▾'; color: var(--muted); font-size: 0.7rem; flex-shrink: 0; }
+    .dropdown-wrap.open .dropdown-btn { border-color: var(--accent); }
+    .dropdown-list {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      z-index: 50;
+      background: var(--surface2);
+      border: 1px solid var(--surface3);
+      border-radius: 10px;
+      max-height: 260px;
+      overflow-y: auto;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      display: none;
+    }
+    .dropdown-wrap.open .dropdown-list { display: block; }
+    .dropdown-item {
+      padding: 8px 10px;
+      font-size: 0.82rem;
+      cursor: pointer;
+      color: var(--text);
+      white-space: normal;
+    }
+    .dropdown-item:hover { background: var(--surface3); }
+    .dropdown-item.active { background: var(--surface3); color: var(--accent); font-weight: 600; }
+
     #safety-preset { width: 100%; max-width: 420px; }
     #safety-custom { width: 140px; margin-top: 10px; }
 
@@ -663,7 +710,68 @@
         if (h === selected) opt.selected = true;
         sel.appendChild(opt);
       });
+      sel._syncDropdownLabel?.();
     }
+
+    // Wraps a <select> with a custom button + list that always opens
+    // downward (see .dropdown-* CSS above for why). The <select> itself
+    // stays in the DOM as the source of truth — every other function keeps
+    // reading/writing it via .value and 'change' events exactly as before;
+    // this only replaces how it's presented and clicked.
+    function enhanceDropdown(id) {
+      const select = document.getElementById(id);
+      if (select.dataset.enhanced) return;
+      select.dataset.enhanced = '1';
+
+      const wrap = document.createElement('div');
+      wrap.className = 'dropdown-wrap';
+      select.parentNode.insertBefore(wrap, select);
+      wrap.appendChild(select);
+      select.style.display = 'none';
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'dropdown-btn';
+      wrap.appendChild(btn);
+
+      const list = document.createElement('div');
+      list.className = 'dropdown-list';
+      wrap.appendChild(list);
+
+      function syncLabel() {
+        const opt = select.options[select.selectedIndex];
+        btn.textContent = opt ? opt.textContent : '';
+      }
+      select._syncDropdownLabel = syncLabel;
+
+      function close() { wrap.classList.remove('open'); }
+      function open() {
+        list.innerHTML = '';
+        Array.from(select.options).forEach((opt, i) => {
+          const item = document.createElement('div');
+          item.className = 'dropdown-item' + (i === select.selectedIndex ? ' active' : '');
+          item.textContent = opt.textContent;
+          item.addEventListener('click', () => {
+            select.selectedIndex = i;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            syncLabel();
+            close();
+          });
+          list.appendChild(item);
+        });
+        wrap.classList.add('open');
+      }
+
+      btn.addEventListener('click', () => {
+        wrap.classList.contains('open') ? close() : open();
+      });
+      document.addEventListener('click', e => { if (!wrap.contains(e.target)) close(); });
+      document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+
+      syncLabel();
+    }
+
+    ['map-date', 'map-days', 'map-drug', 'map-dose', 'map-usage'].forEach(enhanceDropdown);
 
     // ---------- weight-band labels (shared across the set editor and the
     // dose allowlist table, so "帯1" means the same weight range everywhere) ----------
