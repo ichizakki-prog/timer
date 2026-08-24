@@ -440,12 +440,12 @@
                   <th data-key="band" class="sorted asc">体重帯</th>
                   <th data-key="drug">薬剤名</th>
                   <th data-key="dose">用量(g)</th>
-                  <th data-key="weeks">処方があった週</th>
-                  <th data-key="mean">週平均</th>
-                  <th data-key="std">標準偏差</th>
-                  <th data-key="max">週最大</th>
-                  <th data-key="min">週最小</th>
                   <th data-key="rec">推奨予製量(週あたり)</th>
+                  <th data-key="mean">週平均</th>
+                  <th data-key="max">週最大</th>
+                  <th data-key="min" title="処方が無かった週(0)は除いた、処方があった週の中での最小値">週最小(処方時)</th>
+                  <th data-key="std">標準偏差</th>
+                  <th data-key="weeks">処方があった週</th>
                 </tr>
               </thead>
               <tbody></tbody>
@@ -484,12 +484,12 @@
                   <th data-key="band" class="sorted asc">体重帯</th>
                   <th data-key="drug">薬剤名</th>
                   <th data-key="dose">用量(g)</th>
-                  <th data-key="weeks">処方があった週</th>
-                  <th data-key="mean">週平均</th>
-                  <th data-key="std">標準偏差</th>
-                  <th data-key="max">週最大</th>
-                  <th data-key="min">週最小</th>
                   <th data-key="rec">推奨予製量(週あたり)</th>
+                  <th data-key="mean">週平均</th>
+                  <th data-key="max">週最大</th>
+                  <th data-key="min" title="処方が無かった週(0)は除いた、処方があった週の中での最小値">週最小(処方時)</th>
+                  <th data-key="std">標準偏差</th>
+                  <th data-key="weeks">処方があった週</th>
                 </tr>
               </thead>
               <tbody></tbody>
@@ -1509,11 +1509,18 @@
         const mean = sum / n;
         const variance = n > 1 ? values.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1) : 0;
         const std = Math.sqrt(variance);
+        // "週最小" is the smallest amount seen in a week that actually had a
+        // prescription — not counting weeks with none. Including zero-weeks
+        // would make this column read 0 for almost everything (any item not
+        // prescribed literally every single week), which isn't useful as a
+        // reference; the nonzero minimum tells you "even in a slow week,
+        // you needed at least this much".
+        const nonzeroValues = values.filter(v => v > 0);
         return {
           mean, std,
-          max: Math.max(...values), min: Math.min(...values),
+          max: Math.max(...values), min: nonzeroValues.length ? Math.min(...nonzeroValues) : 0,
           rec: Math.max(0, Math.ceil(mean + z * std)),
-          nonzeroWeeks: values.filter(v => v > 0).length,
+          nonzeroWeeks: nonzeroValues.length,
         };
       }
 
@@ -1711,7 +1718,7 @@
           tdRec.title = '「日」と「回」が混在しています。列の対応を確認してください。';
         }
 
-        tr.append(tdBand, tdDrug, tdDose, tdWeeks, tdMean, tdStd, tdMax, tdMin, tdRec);
+        tr.append(tdBand, tdDrug, tdDose, tdRec, tdMean, tdMax, tdMin, tdStd, tdWeeks);
         tbody.appendChild(tr);
       });
     }
