@@ -324,6 +324,7 @@
 <body>
   <h1>粉薬 予製量シミュレーター</h1>
   <p class="subtitle">過去の処方データ（日時・処方日数・処方内容・用量）から、「薬剤×用量（体重帯）」の組み合わせごとに1週間あたりの推奨予製量（日数）を自動算出します。</p>
+  <a href="guide.html" style="color:var(--accent); font-size:0.82rem; text-decoration:none; margin-top:-10px;">📖 はじめての方はこちら（使い方ガイド：文章＋動画）</a>
 
   <div class="card">
     <section class="step">
@@ -337,7 +338,8 @@
         <select id="sheet-select"></select>
       </div>
       <div class="hint" id="file-info"></div>
-      <div class="hint">CSVはUTF-8形式で保存してください（文字化けする場合はExcel形式 .xlsx でお試しください）。</div>
+      <div class="hint">CSVはUTF-8形式で保存してください（文字化けする場合はExcel形式 .xlsx でお試しください）。データはこのブラウザに自動保存され、次回開いた時も引き続き使えます。最新のデータに入れ替えたい時は、新しいファイルをアップロードするか、下のボタンで消去してください。</div>
+      <button type="button" id="clear-saved-btn" style="background:none; border:none; color:var(--muted); text-decoration:underline; cursor:pointer; padding:0; font-size:0.8rem; align-self:flex-start;">保存データを消去してやり直す</button>
       <label class="row" id="no-header-row" style="display:none; cursor:pointer;">
         <input type="checkbox" id="no-header-toggle">
         <span class="hint" style="margin:0;">先頭行が見出し（列名）ではなく、データ行として使う</span>
@@ -506,6 +508,8 @@
     let workbook = null;
     let headers = [];
     let rows = [];
+    let lastFileName = '';
+    const STORAGE_KEY = 'yosei-saved-state-v1';
     // Two independent comparison panels (⑤ analysis A / B) — each keeps its
     // own computed results and sort state, sharing everything upstream
     // (column mapping, sets, dose allowlist).
@@ -618,6 +622,15 @@
 
     function handleFile(file) {
       dropzoneText.textContent = `読み込み中... (${file.name})`;
+      lastFileName = file.name;
+      // A new file may have a different structure than whatever was loaded
+      // before (restored from storage or from an earlier upload), so force
+      // sets/dose-table to re-seed from scratch rather than carrying over
+      // stale config that happened to reference the same column letters.
+      lastDrugCol = null; lastDoseCol = null;
+      lastDoseTableDrugCol = null; lastDoseTableDoseCol = null;
+      doseTableInitialized = false;
+      sets = []; doseTable = [];
       const isCsvLike = /\.(csv|tsv|txt)$/i.test(file.name);
       const reader = new FileReader();
       reader.onload = e => {
@@ -1627,7 +1640,124 @@
       // Keep whatever sort the user last chose across recalculations; only
       // the very first render defaults to 体重帯 (set at declaration above).
       renderTable(panel);
+      saveState();
     }
+
+    // ---------- persistence (localStorage) ----------
+    // Saves everything needed to fully restore the working session without
+    // re-uploading the file: parsed data, column mapping, sets, dose
+    // allowlist, and both panels' settings. Called after each successful
+    // calculation, since that's the natural "I've configured this and it
+    // works" checkpoint.
+    function saveState() {
+      try {
+        const state = {
+          savedAt: Date.now(),
+          fileName: lastFileName,
+          headers, rows, columnPreviews,
+          noHeader: noHeaderToggle.checked,
+          mapping: {
+            date: document.getElementById('map-date').value,
+            days: document.getElementById('map-days').value,
+            drug: document.getElementById('map-drug').value,
+            dose: document.getElementById('map-dose').value,
+            usage: document.getElementById('map-usage').value,
+          },
+          sets, doseTable, bandLabels, doseBandCount,
+          setModeOn: document.getElementById('set-mode-toggle').checked,
+          doseFilterOn: document.getElementById('dose-filter-toggle').checked,
+          panelA: {
+            period: document.getElementById('period-filter-a').value,
+            safety: document.getElementById('safety-preset-a').value,
+            custom: document.getElementById('safety-custom-a').value,
+          },
+          panelB: {
+            period: document.getElementById('period-filter-b').value,
+            safety: document.getElementById('safety-preset-b').value,
+            custom: document.getElementById('safety-custom-b').value,
+          },
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (e) {
+        // Storage full or unavailable (private browsing, etc.) — the app
+        // still works, it just won't remember this session next time.
+        console.warn('前回データの保存に失敗しました:', e);
+      }
+    }
+
+    function restoreState() {
+      let raw;
+      try { raw = localStorage.getItem(STORAGE_KEY); } catch (e) { return false; }
+      if (!raw) return false;
+      let state;
+      try { state = JSON.parse(raw); } catch (e) { return false; }
+      if (!state || !Array.isArray(state.rows) || !Array.isArray(state.headers) || !state.rows.length) return false;
+
+      headers = state.headers;
+      rows = state.rows;
+      columnPreviews = state.columnPreviews || {};
+      lastFileName = state.fileName || '';
+      noHeaderToggle.checked = !!state.noHeader;
+      noHeaderRow.style.display = 'flex';
+
+      fileInfo.classList.remove('error');
+      const savedDate = new Date(state.savedAt);
+      fileInfo.textContent =
+        `前回のデータを復元しました（${lastFileName || 'ファイル名不明'} / ${rows.length}行 / ${savedDate.toLocaleString('ja-JP')}保存）`;
+
+      const m = state.mapping || {};
+      fillSelect('map-date', headers, m.date, false);
+      fillSelect('map-days', headers, m.days, false);
+      fillSelect('map-drug', headers, m.drug, false);
+      fillSelect('map-dose', headers, m.dose, false);
+      fillSelect('map-usage', headers, m.usage, true);
+
+      document.getElementById('mapping-step').style.display = 'block';
+      document.getElementById('settings-step').style.display = 'block';
+
+      lastDrugCol = m.drug || null;
+      lastDoseCol = m.dose || null;
+      lastDoseTableDrugCol = m.drug || null;
+      lastDoseTableDoseCol = m.dose || null;
+      doseTableInitialized = true;
+
+      sets = Array.isArray(state.sets) ? state.sets : [];
+      setIdCounter = sets.reduce((max, s) => Math.max(max, parseInt(String(s.id).replace('set', ''), 10) || 0), 0);
+      doseTable = Array.isArray(state.doseTable) ? state.doseTable : [];
+      if (Array.isArray(state.bandLabels) && state.bandLabels.length) bandLabels = state.bandLabels;
+      if (state.doseBandCount) doseBandCount = state.doseBandCount;
+
+      const setModeOn = !!state.setModeOn;
+      document.getElementById('set-mode-toggle').checked = setModeOn;
+      document.getElementById('set-editor').style.display = setModeOn ? 'flex' : 'none';
+      const doseFilterOn = state.doseFilterOn !== false;
+      document.getElementById('dose-filter-toggle').checked = doseFilterOn;
+      document.getElementById('dose-table-editor').style.display = doseFilterOn ? 'flex' : 'none';
+      document.getElementById('set-step').style.display = 'block';
+      document.getElementById('dose-table-step').style.display = 'block';
+
+      renderSetCards();
+      renderDoseTable();
+
+      ['a', 'b'].forEach(panel => {
+        const p = state['panel' + panel.toUpperCase()];
+        if (!p) return;
+        document.getElementById('period-filter-' + panel).value = p.period || '';
+        document.getElementById('safety-preset-' + panel).value = p.safety || '1.28';
+        document.getElementById('safety-custom-' + panel).value = p.custom || '1.0';
+        document.getElementById('safety-custom-' + panel).style.display = p.safety === 'custom' ? 'inline-block' : 'none';
+      });
+
+      calculate('a');
+      calculate('b');
+      return true;
+    }
+
+    document.getElementById('clear-saved-btn').addEventListener('click', () => {
+      if (!confirm('保存されているデータを消去します。よろしいですか？')) return;
+      try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+      location.reload();
+    });
 
     // ---------- table render / sort ----------
     ['a', 'b'].forEach(panel => {
@@ -1722,6 +1852,10 @@
         tbody.appendChild(tr);
       });
     }
+
+    // Restore a previously saved session, if any, so reloading the page
+    // doesn't require re-uploading the file.
+    restoreState();
   </script>
 </body>
 </html>
