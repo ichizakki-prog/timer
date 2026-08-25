@@ -269,7 +269,7 @@
   <header class="hero">
     <span class="eyebrow">使い方ガイド</span>
     <h1>粉薬 予製量シミュレーターの使い方</h1>
-    <p class="lede">過去の処方データをアップロードするだけで、体重帯・薬剤ごとに「1週間あたり何日分の予製を作ればよいか」を自動計算するツールです。はじめて使う方は、下の動画で流れをひと通り確認してから、①〜⑥の説明を読みながら実際のデータで試してみてください。</p>
+    <p class="lede">過去の処方データをアップロードするだけで、体重帯・薬剤ごとに「1週間あたり何日分の予製を作ればよいか」を自動計算するツールです。はじめて使う方は、下の動画で流れをひと通り確認してから、⓪〜⑥の説明を読みながら実際のデータで試してみてください。</p>
   </header>
 
   <section class="card wide">
@@ -284,6 +284,31 @@
   <section class="steps">
 
     <details class="step-card" open>
+      <summary>
+        <span class="step-num">⓪</span>
+        <span class="step-title">薬歴システムからデータを取り出す（準備）</span>
+        <span class="step-chevron">▾</span>
+      </summary>
+      <div class="step-body">
+        <p>このツールに読み込ませるデータは、電子薬歴システムなどから処方データを抽出し、集計用のスプレッドシートにまとめたものです。ここが一番迷いやすいところだと思うので、一例として流れを載せておきます（システムによって画面や操作は異なります）。</p>
+        <ol style="margin:2px 0 0 1.2em; color:var(--prose); font-size:0.88rem; display:flex; flex-direction:column; gap:6px;">
+          <li>電子薬歴システムの検索メニュー（例：「患者投薬薬品検索」など）を開く</li>
+          <li>対象期間（調剤日の範囲）と、集計したい薬品名を指定して検索する</li>
+          <li>検索結果の一覧を選択してコピーする</li>
+          <li>集計用のスプレッドシート（Googleスプレッドシートなど）を開き、貼り付ける</li>
+          <li>日時・処方内容（薬剤名）・用量・用法・処方日数の列が揃うように整える</li>
+          <li>CSVまたはExcel形式でダウンロードし、次の①でこのツールにアップロードする</li>
+        </ol>
+        <video controls preload="metadata" style="margin-top:10px;">
+          <source src="assets/guide-data-prep.webm" type="video/webm">
+          お使いのブラウザは動画の再生に対応していません。
+        </video>
+        <p class="video-caption">実際の抽出操作を収録したものです。患者名や薬剤・数量などの文字が映る部分にはモザイクをかけていますが、選択・コピー・貼り付けといった操作の流れは分かるようにしています。</p>
+        <div class="tip"><b>ポイント：</b> システムによって検索画面や操作方法は異なります。分からない場合は、お使いのシステムの操作マニュアルやサポートセンターに確認してください。</div>
+      </div>
+    </details>
+
+    <details class="step-card">
       <summary>
         <span class="step-num">①</span>
         <span class="step-title">データの読み込み方</span>
