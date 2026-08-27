@@ -212,6 +212,52 @@
     .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
     .btn-primary:active { transform: translateY(0); }
 
+    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .btn-secondary {
+      border: 1px solid var(--surface3);
+      border-radius: 14px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 11px 20px;
+      background: var(--surface2);
+      color: var(--text);
+      transition: all 0.18s;
+      margin-top: 16px;
+    }
+    .btn-secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .print-only { display: none; }
+    @media print {
+      body > *:not(.print-only) { display: none !important; }
+      body { display: block; background: #fff; color: #000; padding: 0; }
+      .print-only {
+        display: block !important;
+        width: 100%;
+        color: #000;
+        font-family: 'Segoe UI', system-ui, sans-serif;
+      }
+      .print-only h1 { font-size: 1.25rem; margin-bottom: 6px; }
+      .print-only .print-meta { font-size: 0.8rem; color: #333; line-height: 1.6; margin-bottom: 16px; }
+      .print-only table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+      .print-only th, .print-only td { border: 1px solid #999; padding: 6px 8px; text-align: left; }
+      .print-only th { background: #eee; }
+      .print-only .band-badge {
+        padding: 2px 8px; border-radius: 999px; font-weight: 600; font-size: 0.78rem;
+        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+      }
+      .print-only .band-color-0 { background: #fef9c3; color: #854d0e; border: 1px solid #eab308; }
+      .print-only .band-color-1 { background: #dcfce7; color: #166534; border: 1px solid #22c55e; }
+      .print-only .band-color-2 { background: #dbeafe; color: #1e40af; border: 1px solid #3b82f6; }
+      .print-only .band-color-3 { background: #fce7f3; color: #9d174d; border: 1px solid #ec4899; }
+      .print-only .band-color-x { background: #f1f5f9; color: #475569; border: 1px solid #94a3b8; }
+      .print-only .set-tag { font-size: 0.7rem; margin-left: 6px; color: #555; }
+      .print-only td.rec { color: #5b21b6; }
+      .print-only td.low-conf { color: #92400e; }
+      @page { margin: 16mm; }
+    }
+
     .table-wrap { overflow-x: auto; margin-top: 10px; }
     table { width: 100%; border-collapse: collapse; font-size: 0.82rem; min-width: 640px; }
     thead th {
@@ -432,7 +478,10 @@
           </select>
           <input type="number" id="safety-custom-a" step="0.1" value="1.0" style="display:none" placeholder="係数 (例: 1.0)">
           <p class="hint">推奨予製量（日数/週） = 週平均処方日数 ＋ 安全係数 × 標準偏差　（小数点以下は切り上げ）</p>
-          <button class="btn-primary" id="calc-btn-a">計算する</button>
+          <div class="btn-row">
+            <button class="btn-primary" id="calc-btn-a">計算する</button>
+            <button class="btn-secondary" id="print-btn-a" type="button" disabled>🖨 結果を印刷する</button>
+          </div>
 
           <div class="hint" id="result-summary-a" style="margin-top:18px;"></div>
           <div class="table-wrap">
@@ -476,7 +525,10 @@
           </select>
           <input type="number" id="safety-custom-b" step="0.1" value="1.0" style="display:none" placeholder="係数 (例: 1.0)">
           <p class="hint">推奨予製量（日数/週） = 週平均処方日数 ＋ 安全係数 × 標準偏差　（小数点以下は切り上げ）</p>
-          <button class="btn-primary" id="calc-btn-b">計算する</button>
+          <div class="btn-row">
+            <button class="btn-primary" id="calc-btn-b">計算する</button>
+            <button class="btn-secondary" id="print-btn-b" type="button" disabled>🖨 結果を印刷する</button>
+          </div>
 
           <div class="hint" id="result-summary-b" style="margin-top:18px;"></div>
           <div class="table-wrap">
@@ -501,6 +553,8 @@
       </div>
     </section>
   </div>
+
+  <div id="print-area" class="print-only"></div>
 
   <script src="vendor/xlsx.full.min.js"></script>
   <script>
@@ -1404,6 +1458,8 @@
     // ---------- calculation ----------
     document.getElementById('calc-btn-a').addEventListener('click', () => calculate('a'));
     document.getElementById('calc-btn-b').addEventListener('click', () => calculate('b'));
+    document.getElementById('print-btn-a').addEventListener('click', () => printPanel('a'));
+    document.getElementById('print-btn-b').addEventListener('click', () => printPanel('b'));
 
     function calculate(panel) {
       const dateCol = document.getElementById('map-date').value;
@@ -1414,6 +1470,9 @@
 
       const summaryEl = document.getElementById('result-summary-' + panel);
       const tbodyEl = document.querySelector('#result-table-' + panel + ' tbody');
+      // Disabled up front; only re-enabled once this run actually produces
+      // results, so a failed/empty recalc can't leave a stale printable table.
+      document.getElementById('print-btn-' + panel).disabled = true;
 
       if (!dateCol || !daysCol || !drugCol || !doseCol) {
         summaryEl.classList.add('error');
@@ -1641,6 +1700,44 @@
       // the very first render defaults to 体重帯 (set at declaration above).
       renderTable(panel);
       saveState();
+      document.getElementById('print-btn-' + panel).disabled = results.length === 0;
+    }
+
+    // ---------- print ----------
+    // Builds a plain, light-background printable version of one panel's
+    // current settings + result table into #print-area, then triggers the
+    // browser's print dialog. Uses window.print() directly (not an iframe)
+    // and a body-level @media print rule that hides everything except
+    // #print-area, so it works fully offline like the rest of the tool.
+    function printPanel(panel) {
+      const results = panelResults[panel];
+      if (!results || !results.length) return;
+
+      const periodSel = document.getElementById('period-filter-' + panel);
+      const periodLabel = periodSel.options[periodSel.selectedIndex].textContent;
+      const safetySel = document.getElementById('safety-preset-' + panel);
+      const safetyLabel = safetySel.value === 'custom'
+        ? `カスタム係数 ${document.getElementById('safety-custom-' + panel).value}`
+        : safetySel.options[safetySel.selectedIndex].textContent;
+      const summaryText = document.getElementById('result-summary-' + panel).textContent;
+      const now = new Date();
+      const printedAt = `${now.getFullYear()}/${pad2(now.getMonth() + 1)}/${pad2(now.getDate())} ${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+
+      const tableClone = document.getElementById('result-table-' + panel).cloneNode(true);
+      tableClone.removeAttribute('id');
+
+      const area = document.getElementById('print-area');
+      area.innerHTML = '';
+      const h1 = document.createElement('h1');
+      h1.textContent = `粉薬 予製量シミュレーター － 分析結果（${panel === 'a' ? 'A' : 'B'}）`;
+      const meta = document.createElement('div');
+      meta.className = 'print-meta';
+      meta.innerHTML = `分析期間: ${periodLabel} ｜ 安全係数: ${safetyLabel}<br>${summaryText}<br>印刷日時: ${printedAt}`;
+      area.appendChild(h1);
+      area.appendChild(meta);
+      area.appendChild(tableClone);
+
+      window.print();
     }
 
     // ---------- persistence (localStorage) ----------
