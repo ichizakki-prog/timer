@@ -954,8 +954,8 @@
       r => !r.isSet && /ホクナリン/.test(r.drug),
       r => !r.isSet && /カロナール/.test(r.drug),
       r => !r.isSet && /ミヤ.?[BbＢ][MmＭ]/.test(r.drug),
-      r => r.isSet && /ムコムコ/.test(r.drug) && !/アス/.test(r.drug),
-      r => !r.isSet && /トランサミン/.test(r.drug),
+      r => r.isSet && /ムコムコ/.test(r.drug) && !/アス/.test(r.drug) && !/トラ/.test(r.drug),
+      r => r.isSet && /ムコムコトラ/.test(r.drug),
       r => r.isSet && /ムコムコアス/.test(r.drug) && /分2/.test(r.drug),
     ];
     function resultPriority(r) {
@@ -1065,11 +1065,17 @@
       const carbo = find(/カルボシステイン/);
       const ambro = find(/アンブロキソール/);
       const asbe = find(/アスベリン/);
+      const trans = find(/トランサミン/);
       if (carbo && ambro) {
         sets.push(newSet('ムコムコ', [carbo, ambro]));
         if (asbe) {
           sets.push(newSet('ムコムコアス(分3)', [carbo, ambro, asbe], '3'));
           sets.push(newSet('ムコムコアス(分2)', [carbo, ambro, asbe], '2'));
+        }
+        if (trans) {
+          // トランサミンは単剤運用をやめ、ムコムコ（カルボ+アンブロ）に
+          // 組み込んだ新しいセット「ムコムコトラ」として予製するようになった。
+          sets.push(newSet('ムコムコトラ', [carbo, ambro, trans]));
         }
       }
     }
