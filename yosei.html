@@ -1687,13 +1687,17 @@
         });
       });
 
-      // トランサミンは単剤運用をやめ、ムコムコトラとしてのみ予製する運用に
-      // 切り替わったため、セットに一致しなかった余り（新セット導入前の古い
-      // 処方パターンなど）があっても単剤としては表示しない。
-      let suppressedTransamin = 0;
+      // カルボシステイン・アンブロキソール（ムコムコ系セットの基本2剤）と、
+      // アスベリン・トランサミン（それぞれムコムコアス・ムコムコトラの一員
+      // としてのみ予製する運用）は、セットに一致しなかった余り（日付・用量が
+      // 微妙にズレている古いデータなど）があっても単剤としては表示しない。
+      // 単剤の分析結果として残るのは、そもそも単剤運用しているホクナリン・
+      // カロナール・ミヤBMなど。
+      const SET_ONLY_DRUGS = [/カルボシステイン/, /アンブロキソール/, /アスベリン/, /トランサミン/];
+      let suppressedSetOnly = 0;
       remaining.forEach((wkMap, key) => {
         const { drug, dose } = remainingMeta.get(key);
-        if (/トランサミン/.test(drug)) { suppressedTransamin++; return; }
+        if (SET_ONLY_DRUGS.some(re => re.test(drug))) { suppressedSetOnly++; return; }
         const units = remainingUnits.get(key);
         const s = statsFor(wkMap);
         // unit: "日" (regular scheduled drugs) or "回" (頓服/PRN, dosed by count).
@@ -1706,12 +1710,12 @@
       const skippedNote = skipped > 0 ? `（日時・処方日数(回数)・薬剤名・用量が不明な${skipped}件を除外）` : '';
       const filterNote = doseFilterOn && filteredOut > 0 ? `（約束処方表に無い用量を${filteredOut}件除外）` : '';
       const setNote = setModeOn && setInstanceTotal > 0 ? ` ｜ セット一致件数: ${setInstanceTotal}件` : '';
-      const transaminNote = suppressedTransamin > 0 ? `（ムコムコトラに一致しなかったトランサミン単剤${suppressedTransamin}件は非表示）` : '';
+      const setOnlyNote = suppressedSetOnly > 0 ? `（セットに一致しなかったカルボシステイン/アンブロキソール/アスベリン/トランサミンの単剤${suppressedSetOnly}件は非表示）` : '';
       const periodSel = document.getElementById('period-filter-' + panel);
       const periodLabel = periodSel.options[periodSel.selectedIndex].textContent;
       const periodNote = periodDays ? `分析期間: ${periodLabel} ｜ ` : '';
       summaryEl.textContent =
-        `${periodNote}対象期間: ${dateStr(minDate)} 〜 ${dateStr(maxDate)}（${totalWeeks}週間） ｜ 集計パターン数: ${results.length} ｜ 読み込み件数: ${validCount}件${setNote} ${skippedNote}${filterNote}${transaminNote}`;
+        `${periodNote}対象期間: ${dateStr(minDate)} 〜 ${dateStr(maxDate)}（${totalWeeks}週間） ｜ 集計パターン数: ${results.length} ｜ 読み込み件数: ${validCount}件${setNote} ${skippedNote}${filterNote}${setOnlyNote}`;
 
       panelResults[panel] = results;
       // Keep whatever sort the user last chose across recalculations; only
