@@ -51,6 +51,30 @@ except ImportError:
     raise
 
 
+def load_dotenv() -> None:
+    """Load GARMIN_* values from a .env file next to this script, if present.
+
+    Keeps local/PC usage simple: put GARMIN_EMAIL=... and GARMIN_PASSWORD=...
+    in garmin-analysis/.env and this script picks them up automatically.
+    Values already set in the real environment always take priority.
+    No external dependency (python-dotenv) required.
+    """
+    env_path = Path(__file__).parent / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
+
+
+load_dotenv()
+
+
 # --------------------------------------------------------------------------
 # Login
 # --------------------------------------------------------------------------
