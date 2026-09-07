@@ -511,7 +511,7 @@
                   <th data-key="dose">用量(g)</th>
                   <th data-key="rec">推奨予製量(週あたり)</th>
                   <th class="no-sort" title="予製を作成したらチェック">作成済み</th>
-                  <th class="no-sort">作成日</th>
+                  <th class="no-sort" title="チェックすると当日の日付が記録されます">前回作成日</th>
                   <th data-key="mean">週平均</th>
                   <th data-key="max">週最大</th>
                   <th data-key="min" title="処方が無かった週(0)は除いた、処方があった週の中での最小値">週最小(処方時)</th>
@@ -560,7 +560,7 @@
                   <th data-key="dose">用量(g)</th>
                   <th data-key="rec">推奨予製量(週あたり)</th>
                   <th class="no-sort" title="予製を作成したらチェック">作成済み</th>
-                  <th class="no-sort">作成日</th>
+                  <th class="no-sort" title="チェックすると当日の日付が記録されます">前回作成日</th>
                   <th data-key="mean">週平均</th>
                   <th data-key="max">週最大</th>
                   <th data-key="min" title="処方が無かった週(0)は除いた、処方があった週の中での最小値">週最小(処方時)</th>
@@ -603,7 +603,12 @@
     // between panels A and B since it's one physical fact either panel
     // might be showing a recommendation for.
     const PRODUCTION_LOG_KEY = 'yosei-production-log-v1';
-    let productionLog = {}; // key -> { checked: bool, date: 'YYYY-MM-DD' }
+    let productionLog = {}; // key -> { date: 'YYYY-MM-DD' } — persisted, survives reload
+    // The checkbox itself is a momentary "log it now" action, not a
+    // persisted flag: sessionChecked lives only in memory, so it naturally
+    // resets on the next page load while still surviving in-page re-renders
+    // (resort, recalc) within the current visit.
+    let sessionChecked = {};
 
     function productionKey(r) {
       return `${r.bandIdx ?? 'x'}|${r.drug}|${r.doseDisplay}`;
@@ -1794,15 +1799,17 @@
 
       const tableClone = document.getElementById('result-table-' + panel).cloneNode(true);
       tableClone.removeAttribute('id');
-      // Swap the live 作成済み/作成日 form controls for plain text, reading
-      // the authoritative state from productionLog (not the clone's input
-      // state) so the printed sheet is unambiguous either way.
+      // Swap the live 作成済み/作成日 form controls for plain text. The
+      // checkmark reflects whatever is checked on screen right now (it's a
+      // momentary action, not persisted state); the date comes from
+      // productionLog, the persisted "last made on" record.
       tableClone.querySelectorAll('tr[data-pkey]').forEach(tr => {
-        const entry = productionLog[tr.dataset.pkey] || { checked: false, date: '' };
+        const entry = productionLog[tr.dataset.pkey] || { date: '' };
+        const isChecked = tr.querySelector('.made-checkbox')?.checked;
         const madeCell = tr.querySelector('.made-cell');
         const dateCell = tr.querySelector('.date-cell');
         madeCell.innerHTML = '';
-        madeCell.textContent = entry.checked ? '✓' : '';
+        madeCell.textContent = isChecked ? '✓' : '';
         madeCell.style.textAlign = 'center';
         dateCell.innerHTML = '';
         dateCell.textContent = entry.date || '';
@@ -2028,19 +2035,24 @@
           tdRec.title = '「日」と「回」が混在しています。列の対応を確認してください。';
         }
 
-        // 作成済み / 作成日: a real-world production checklist, independent
-        // of the calculated columns. Checking the box auto-fills today's
-        // date (still editable) so logging a batch is a single click.
+        // 作成済み / 前回作成日: a real-world production log, independent of
+        // the calculated columns. The checkbox is a momentary "log it now"
+        // action, not a persisted done-flag — checking it stamps today's
+        // date into productionLog (persisted, survives reload), while the
+        // checkmark itself only lives in sessionChecked (in-memory), so it
+        // naturally clears on the next visit instead of looking like a
+        // stale "already done" state — but still survives an in-page
+        // resort/recalculation, since those don't touch sessionChecked.
         const pKey = productionKey(r);
-        tr.dataset.pkey = pKey; // used by printPanel() to render 作成済み/作成日 as plain text
-        const entry = productionLog[pKey] || { checked: false, date: '' };
+        tr.dataset.pkey = pKey; // used by printPanel() to render 作成済み/前回作成日 as plain text
+        const entry = productionLog[pKey] || { date: '' };
 
         const tdMade = document.createElement('td');
         tdMade.className = 'made-cell';
         const madeCheckbox = document.createElement('input');
         madeCheckbox.type = 'checkbox';
         madeCheckbox.className = 'made-checkbox';
-        madeCheckbox.checked = !!entry.checked;
+        madeCheckbox.checked = !!sessionChecked[pKey];
         tdMade.appendChild(madeCheckbox);
 
         const tdDate = document.createElement('td');
@@ -2048,24 +2060,21 @@
         const dateInput = document.createElement('input');
         dateInput.type = 'date';
         dateInput.className = 'made-date';
+        dateInput.title = '前回作成日';
         dateInput.value = entry.date || '';
         tdDate.appendChild(dateInput);
 
         madeCheckbox.addEventListener('change', () => {
-          const cur = productionLog[pKey] || { checked: false, date: '' };
-          cur.checked = madeCheckbox.checked;
-          if (cur.checked && !cur.date) {
-            const today = new Date();
-            cur.date = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
-            dateInput.value = cur.date;
-          }
-          productionLog[pKey] = cur;
+          sessionChecked[pKey] = madeCheckbox.checked;
+          if (!madeCheckbox.checked) return; // unchecking doesn't touch the saved date
+          const today = new Date();
+          const todayStr = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
+          productionLog[pKey] = { date: todayStr };
+          dateInput.value = todayStr;
           saveProductionLog();
         });
         dateInput.addEventListener('change', () => {
-          const cur = productionLog[pKey] || { checked: false, date: '' };
-          cur.date = dateInput.value;
-          productionLog[pKey] = cur;
+          productionLog[pKey] = { date: dateInput.value };
           saveProductionLog();
         });
 
