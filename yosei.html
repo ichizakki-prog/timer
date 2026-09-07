@@ -274,6 +274,22 @@
     thead th:hover { color: var(--text); }
     thead th.sorted::after { content: ' ▾'; color: var(--accent); }
     thead th.sorted.asc::after { content: ' ▴'; color: var(--accent); }
+    thead th.no-sort { cursor: default; }
+    thead th.no-sort:hover { color: var(--muted); }
+    .made-cell { text-align: center; }
+    .made-checkbox {
+      width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent);
+      vertical-align: middle;
+    }
+    input.made-date {
+      background: var(--surface2);
+      border: 1px solid var(--surface3);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 0.78rem;
+      padding: 4px 6px;
+      color-scheme: dark;
+    }
     tbody td {
       padding: 8px 10px;
       border-bottom: 1px solid var(--surface2);
@@ -494,6 +510,8 @@
                   <th data-key="drug">薬剤名</th>
                   <th data-key="dose">用量(g)</th>
                   <th data-key="rec">推奨予製量(週あたり)</th>
+                  <th class="no-sort" title="予製を作成したらチェック">作成済み</th>
+                  <th class="no-sort">作成日</th>
                   <th data-key="mean">週平均</th>
                   <th data-key="max">週最大</th>
                   <th data-key="min" title="処方が無かった週(0)は除いた、処方があった週の中での最小値">週最小(処方時)</th>
@@ -541,6 +559,8 @@
                   <th data-key="drug">薬剤名</th>
                   <th data-key="dose">用量(g)</th>
                   <th data-key="rec">推奨予製量(週あたり)</th>
+                  <th class="no-sort" title="予製を作成したらチェック">作成済み</th>
+                  <th class="no-sort">作成日</th>
                   <th data-key="mean">週平均</th>
                   <th data-key="max">週最大</th>
                   <th data-key="min" title="処方が無かった週(0)は除いた、処方があった週の中での最小値">週最小(処方時)</th>
@@ -571,6 +591,33 @@
     // (column mapping, sets, dose allowlist).
     let panelResults = { a: [], b: [] };
     let panelSortState = { a: { key: 'band', asc: true }, b: { key: 'band', asc: true } };
+
+    // ---------- production log (作成済みチェック・作成日) ----------
+    // Tracks "did we actually pre-compound this band×drug×dose combo, and
+    // when" — a real-world production record, not part of the calculated
+    // analysis. Kept in its own localStorage key (not STORAGE_KEY) so it
+    // survives switching files or clearing the saved upload/settings:
+    // "did we make it" shouldn't reset just because the data changed.
+    // Keyed by band+drug+dose rather than table row, so it stays attached
+    // to the same combo across resorts/recalculations, and is shared
+    // between panels A and B since it's one physical fact either panel
+    // might be showing a recommendation for.
+    const PRODUCTION_LOG_KEY = 'yosei-production-log-v1';
+    let productionLog = {}; // key -> { checked: bool, date: 'YYYY-MM-DD' }
+
+    function productionKey(r) {
+      return `${r.bandIdx ?? 'x'}|${r.drug}|${r.doseDisplay}`;
+    }
+    function loadProductionLog() {
+      try {
+        const raw = localStorage.getItem(PRODUCTION_LOG_KEY);
+        if (raw) productionLog = JSON.parse(raw) || {};
+      } catch (e) { productionLog = {}; }
+    }
+    function saveProductionLog() {
+      try { localStorage.setItem(PRODUCTION_LOG_KEY, JSON.stringify(productionLog)); } catch (e) {}
+    }
+    loadProductionLog();
 
     // ---------- helpers ----------
     function pad2(n) { return String(n).padStart(2, '0'); }
@@ -1747,6 +1794,19 @@
 
       const tableClone = document.getElementById('result-table-' + panel).cloneNode(true);
       tableClone.removeAttribute('id');
+      // Swap the live 作成済み/作成日 form controls for plain text, reading
+      // the authoritative state from productionLog (not the clone's input
+      // state) so the printed sheet is unambiguous either way.
+      tableClone.querySelectorAll('tr[data-pkey]').forEach(tr => {
+        const entry = productionLog[tr.dataset.pkey] || { checked: false, date: '' };
+        const madeCell = tr.querySelector('.made-cell');
+        const dateCell = tr.querySelector('.date-cell');
+        madeCell.innerHTML = '';
+        madeCell.textContent = entry.checked ? '✓' : '';
+        madeCell.style.textAlign = 'center';
+        dateCell.innerHTML = '';
+        dateCell.textContent = entry.date || '';
+      });
 
       const area = document.getElementById('print-area');
       area.innerHTML = '';
@@ -1882,8 +1942,9 @@
     ['a', 'b'].forEach(panel => {
       document.querySelectorAll('#result-table-' + panel + ' thead th').forEach(th => {
         th.addEventListener('click', () => {
-          const state = panelSortState[panel];
           const key = th.dataset.key;
+          if (!key) return; // 作成済み/作成日 have no sort key
+          const state = panelSortState[panel];
           if (state.key === key) {
             state.asc = !state.asc;
           } else {
@@ -1967,7 +2028,48 @@
           tdRec.title = '「日」と「回」が混在しています。列の対応を確認してください。';
         }
 
-        tr.append(tdBand, tdDrug, tdDose, tdRec, tdMean, tdMax, tdMin, tdStd, tdWeeks);
+        // 作成済み / 作成日: a real-world production checklist, independent
+        // of the calculated columns. Checking the box auto-fills today's
+        // date (still editable) so logging a batch is a single click.
+        const pKey = productionKey(r);
+        tr.dataset.pkey = pKey; // used by printPanel() to render 作成済み/作成日 as plain text
+        const entry = productionLog[pKey] || { checked: false, date: '' };
+
+        const tdMade = document.createElement('td');
+        tdMade.className = 'made-cell';
+        const madeCheckbox = document.createElement('input');
+        madeCheckbox.type = 'checkbox';
+        madeCheckbox.className = 'made-checkbox';
+        madeCheckbox.checked = !!entry.checked;
+        tdMade.appendChild(madeCheckbox);
+
+        const tdDate = document.createElement('td');
+        tdDate.className = 'date-cell';
+        const dateInput = document.createElement('input');
+        dateInput.type = 'date';
+        dateInput.className = 'made-date';
+        dateInput.value = entry.date || '';
+        tdDate.appendChild(dateInput);
+
+        madeCheckbox.addEventListener('change', () => {
+          const cur = productionLog[pKey] || { checked: false, date: '' };
+          cur.checked = madeCheckbox.checked;
+          if (cur.checked && !cur.date) {
+            const today = new Date();
+            cur.date = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
+            dateInput.value = cur.date;
+          }
+          productionLog[pKey] = cur;
+          saveProductionLog();
+        });
+        dateInput.addEventListener('change', () => {
+          const cur = productionLog[pKey] || { checked: false, date: '' };
+          cur.date = dateInput.value;
+          productionLog[pKey] = cur;
+          saveProductionLog();
+        });
+
+        tr.append(tdBand, tdDrug, tdDose, tdRec, tdMade, tdDate, tdMean, tdMax, tdMin, tdStd, tdWeeks);
         tbody.appendChild(tr);
       });
     }
