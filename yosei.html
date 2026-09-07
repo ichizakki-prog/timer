@@ -167,7 +167,7 @@
     [id^="safety-custom"] { width: 140px; margin-top: 10px; }
     [id^="period-filter"] { max-width: 100%; }
 
-    /* Side-by-side comparison panels (⑤) */
+    /* Side-by-side comparison panels (②) */
     .compare-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -410,70 +410,8 @@
       </label>
     </section>
 
-    <section class="step" id="mapping-step" style="display:none">
-      <h2>② 列の対応を確認</h2>
-      <div class="hint">見出しが無い場合は各列のサンプル値を表示しているので、内容を見て選んでください。</div>
-      <div class="mapping-grid">
-        <div>
-          <label>日時</label>
-          <select id="map-date"></select>
-        </div>
-        <div>
-          <label>処方内容（薬剤名）</label>
-          <select id="map-drug"></select>
-        </div>
-        <div>
-          <label>用量（体重帯の区別に使用・必須）</label>
-          <select id="map-dose"></select>
-        </div>
-        <div>
-          <label>用法（分2/分3等でセットを分ける場合に使用・任意）</label>
-          <select id="map-usage"></select>
-        </div>
-        <div>
-          <label>処方日数・回数（例: 5日分／3回分）</label>
-          <select id="map-days"></select>
-        </div>
-      </div>
-    </section>
-
-    <section class="step" id="set-step" style="display:none">
-      <h2>③ セット（組み合わせ処方）を定義（任意）</h2>
-      <div class="hint">「ムコムコ」「ムコムコアス」のように複数の薬を1つにまとめて予製している場合、ここで組み合わせを定義すると、セット単位でまとめて何日分作ればいいか算出します。定義しなかった薬は今まで通り単独で算出されます。</div>
-      <label class="row" style="cursor:pointer; margin-top:10px;">
-        <input type="checkbox" id="set-mode-toggle">
-        <span class="hint" style="margin:0;">セット単位で集計する</span>
-      </label>
-      <div id="set-editor" style="display:none; flex-direction:column; gap:16px; margin-top:14px;">
-        <div id="set-cards" style="display:flex; flex-direction:column; gap:14px;"></div>
-        <button class="btn-secondary" id="add-set-btn" type="button" style="border:none; border-radius:12px; padding:9px 18px; font-size:0.82rem; font-weight:600; cursor:pointer; align-self:flex-start;">＋ セットを追加</button>
-      </div>
-    </section>
-
-    <section class="step" id="dose-table-step" style="display:none">
-      <h2>④ 有効な用量（約束処方表）を設定</h2>
-      <div class="hint">ここに登録した薬剤・用量だけを予製の集計対象にします。表に無い薬剤や用量（個別に量を調整した分など）は結果から除外されます。</div>
-      <label class="row" style="cursor:pointer; margin-top:10px;">
-        <input type="checkbox" id="dose-filter-toggle" checked>
-        <span class="hint" style="margin:0;">表にある用量だけを対象にする</span>
-      </label>
-      <div id="dose-table-editor" style="display:flex; flex-direction:column; gap:14px; margin-top:14px;">
-        <div class="band-table-wrap">
-          <table class="band-table" id="dose-master-table">
-            <thead><tr id="dose-master-thead"></tr></thead>
-            <tbody id="dose-master-tbody"></tbody>
-          </table>
-        </div>
-        <div class="row" style="gap:10px;">
-          <button class="band-add-row-btn" id="dose-add-band-btn" type="button">＋ 体重帯を追加</button>
-          <select id="dose-add-drug-select" style="margin-left:auto;"></select>
-          <button class="band-add-row-btn" id="dose-add-drug-btn" type="button">＋ 薬剤を追加</button>
-        </div>
-      </div>
-    </section>
-
     <section class="step" id="settings-step" style="display:none">
-      <h2>⑤ 分析条件を選んで計算（AとBを見比べられます）</h2>
+      <h2>② 分析条件を選んで計算（AとBを見比べられます）</h2>
       <div class="compare-grid">
         <div class="compare-panel" id="panel-a">
           <h3>分析 A</h3>
@@ -574,6 +512,68 @@
         </div>
       </div>
     </section>
+
+    <section class="step" id="mapping-step" style="display:none">
+      <h2>③ 列の対応を確認</h2>
+      <div class="hint">見出しが無い場合は各列のサンプル値を表示しているので、内容を見て選んでください。</div>
+      <div class="mapping-grid">
+        <div>
+          <label>日時</label>
+          <select id="map-date"></select>
+        </div>
+        <div>
+          <label>処方内容（薬剤名）</label>
+          <select id="map-drug"></select>
+        </div>
+        <div>
+          <label>用量（体重帯の区別に使用・必須）</label>
+          <select id="map-dose"></select>
+        </div>
+        <div>
+          <label>用法（分2/分3等でセットを分ける場合に使用・任意）</label>
+          <select id="map-usage"></select>
+        </div>
+        <div>
+          <label>処方日数・回数（例: 5日分／3回分）</label>
+          <select id="map-days"></select>
+        </div>
+      </div>
+    </section>
+
+    <section class="step" id="set-step" style="display:none">
+      <h2>④ セット（組み合わせ処方）を定義（任意）</h2>
+      <div class="hint">「ムコムコ」「ムコムコアス」のように複数の薬を1つにまとめて予製している場合、ここで組み合わせを定義すると、セット単位でまとめて何日分作ればいいか算出します。定義しなかった薬は今まで通り単独で算出されます。</div>
+      <label class="row" style="cursor:pointer; margin-top:10px;">
+        <input type="checkbox" id="set-mode-toggle">
+        <span class="hint" style="margin:0;">セット単位で集計する</span>
+      </label>
+      <div id="set-editor" style="display:none; flex-direction:column; gap:16px; margin-top:14px;">
+        <div id="set-cards" style="display:flex; flex-direction:column; gap:14px;"></div>
+        <button class="btn-secondary" id="add-set-btn" type="button" style="border:none; border-radius:12px; padding:9px 18px; font-size:0.82rem; font-weight:600; cursor:pointer; align-self:flex-start;">＋ セットを追加</button>
+      </div>
+    </section>
+
+    <section class="step" id="dose-table-step" style="display:none">
+      <h2>⑤ 有効な用量（約束処方表）を設定</h2>
+      <div class="hint">ここに登録した薬剤・用量だけを予製の集計対象にします。表に無い薬剤や用量（個別に量を調整した分など）は結果から除外されます。</div>
+      <label class="row" style="cursor:pointer; margin-top:10px;">
+        <input type="checkbox" id="dose-filter-toggle" checked>
+        <span class="hint" style="margin:0;">表にある用量だけを対象にする</span>
+      </label>
+      <div id="dose-table-editor" style="display:flex; flex-direction:column; gap:14px; margin-top:14px;">
+        <div class="band-table-wrap">
+          <table class="band-table" id="dose-master-table">
+            <thead><tr id="dose-master-thead"></tr></thead>
+            <tbody id="dose-master-tbody"></tbody>
+          </table>
+        </div>
+        <div class="row" style="gap:10px;">
+          <button class="band-add-row-btn" id="dose-add-band-btn" type="button">＋ 体重帯を追加</button>
+          <select id="dose-add-drug-select" style="margin-left:auto;"></select>
+          <button class="band-add-row-btn" id="dose-add-drug-btn" type="button">＋ 薬剤を追加</button>
+        </div>
+      </div>
+    </section>
   </div>
 
   <div id="print-area" class="print-only"></div>
@@ -586,7 +586,7 @@
     let rows = [];
     let lastFileName = '';
     const STORAGE_KEY = 'yosei-saved-state-v1';
-    // Two independent comparison panels (⑤ analysis A / B) — each keeps its
+    // Two independent comparison panels (② analysis A / B) — each keeps its
     // own computed results and sort state, sharing everything upstream
     // (column mapping, sets, dose allowlist).
     let panelResults = { a: [], b: [] };
@@ -1081,7 +1081,7 @@
     function seedBandRows(set) {
       if (set.drugs.length < 2) { set.bandRows = []; return; }
 
-      // Prefer the 約束処方表 (master dose allowlist, step ④) as the source of
+      // Prefer the 約束処方表 (master dose allowlist, step ⑤) as the source of
       // band alignment when every drug in this set is already registered
       // there — that keeps weight-band index 0 meaning "7-10kg" (etc.)
       // consistently across every set and the individual-drug results,
@@ -1219,7 +1219,7 @@
           const warn = document.createElement('div');
           warn.className = 'hint';
           warn.style.color = 'var(--warn)';
-          warn.textContent = '「用法」の列が選択されていないため、このセットは一致しません。②で用法の列を選んでください。';
+          warn.textContent = '「用法」の列が選択されていないため、このセットは一致しません。③で用法の列を選んでください。';
           card.appendChild(warn);
         }
 
