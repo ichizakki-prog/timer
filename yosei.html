@@ -686,17 +686,24 @@
       return n === null ? null : { value: n, unit: '' };
     }
 
-    function mondayOf(date) {
+    // "1週間" here is the standard Monday-Sunday ISO week — used only as a
+    // normalization unit for 週平均/標準偏差 (there's no single fixed
+    // production day to anchor to; 予製 is made on whatever day/days suit
+    // that week, sometimes daily for some bands). Because no fixed weekly
+    // bucketing can be trusted not to split a real demand burst across a
+    // boundary, 週最大 and 推奨予製量 do NOT rely on this bucketing at all —
+    // see rollingMaxOf() below, which checks every possible 7-day window.
+    function cycleStartOf(date) {
       const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-      const day = d.getDay();
-      const diff = day === 0 ? -6 : 1 - day;
-      d.setDate(d.getDate() + diff);
+      const day = d.getDay(); // 0=Sun .. 6=Sat
+      const diff = day === 0 ? 6 : day - 1; // days since the most recent Monday
+      d.setDate(d.getDate() - diff);
       return d;
     }
 
     function weekKeyOf(date) {
-      const m = mondayOf(date);
-      return `${m.getFullYear()}-${pad2(m.getMonth() + 1)}-${pad2(m.getDate())}`;
+      const c = cycleStartOf(date);
+      return `${c.getFullYear()}-${pad2(c.getMonth() + 1)}-${pad2(c.getDate())}`;
     }
 
     function dateStr(d) {
@@ -1627,18 +1634,43 @@
         return;
       }
 
-      // build full continuous week list across the whole dataset range
+      // build full continuous week list (Friday-anchored cycles) across the whole dataset range
       const weeks = [];
-      let cursor = mondayOf(minDate);
-      const lastMonday = mondayOf(maxDate);
-      while (cursor <= lastMonday) {
+      let cursor = cycleStartOf(minDate);
+      const lastCycleStart = cycleStartOf(maxDate);
+      while (cursor <= lastCycleStart) {
         weeks.push(`${cursor.getFullYear()}-${pad2(cursor.getMonth() + 1)}-${pad2(cursor.getDate())}`);
         cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 7);
       }
       const totalWeeks = weeks.length;
       const dateFromKey = k => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); };
 
-      function statsFor(wkMap) {
+      // The true worst 7-consecutive-calendar-day burden, checking every
+      // possible starting day (not just calendar-week buckets). This is
+      // what actually determines whether a given amount lasts, regardless
+      // of which day(s) 予製 happens to get made on — a fixed weekly
+      // bucketing can hide a real burst that straddles its boundary, but a
+      // sliding window can't miss one no matter where it falls.
+      function rollingMaxOf(dayMap) {
+        const dayAmounts = [];
+        let cursor = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate());
+        while (cursor <= maxDate) {
+          const key = `${cursor.getFullYear()}-${pad2(cursor.getMonth() + 1)}-${pad2(cursor.getDate())}`;
+          dayAmounts.push(dayMap.get(key) || 0);
+          cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 1);
+        }
+        let windowSum = 0, maxSum = 0;
+        for (let i = 0; i < dayAmounts.length; i++) {
+          windowSum += dayAmounts[i];
+          if (i >= 7) windowSum -= dayAmounts[i - 7];
+          if (i >= 6) maxSum = Math.max(maxSum, windowSum);
+        }
+        // range shorter than 7 days: the one window we do have is everything
+        if (dayAmounts.length > 0 && dayAmounts.length < 7) maxSum = Math.max(maxSum, windowSum);
+        return maxSum;
+      }
+
+      function statsFor(wkMap, dayMap) {
         const values = weeks.map(w => wkMap.get(w) || 0);
         const n = values.length;
         const sum = values.reduce((a, b) => a + b, 0);
@@ -1652,10 +1684,17 @@
         // reference; the nonzero minimum tells you "even in a slow week,
         // you needed at least this much".
         const nonzeroValues = values.filter(v => v > 0);
+        const rollingMax = rollingMaxOf(dayMap);
         return {
           mean, std,
-          max: Math.max(...values), min: nonzeroValues.length ? Math.min(...nonzeroValues) : 0,
-          rec: Math.max(0, Math.ceil(mean + z * std)),
+          // 週最大 is the true worst 7-consecutive-day burden (rollingMaxOf),
+          // not just the largest calendar-week bucket — it's always >= the
+          // old bucketed max, never smaller, so this is a strict correction.
+          max: rollingMax, min: nonzeroValues.length ? Math.min(...nonzeroValues) : 0,
+          // 推奨予製量 is never allowed to fall below the worst 7-day burden
+          // actually observed in the data, even if the statistical formula
+          // alone would undershoot it (e.g. with a low safety preset).
+          rec: Math.max(0, Math.ceil(mean + z * std), rollingMax),
           nonzeroWeeks: nonzeroValues.length,
         };
       }
@@ -1674,6 +1713,7 @@
           set.bandRows.forEach((bandDoses, bandIdx) => {
             if (set.drugs.some(d => !bandDoses[d])) return; // incomplete band row, skip
             const wkMap = new Map();
+            const dayMap = new Map();
             let anyMatch = false;
             let sampleUnit = '日';
             index.forEach((byDrug, dateKey) => {
@@ -1696,13 +1736,14 @@
                 });
                 const wk = weekKeyOf(dateFromKey(dateKey));
                 wkMap.set(wk, (wkMap.get(wk) || 0) + daysVal * minCount);
+                dayMap.set(dateKey, (dayMap.get(dateKey) || 0) + daysVal * minCount);
                 anyMatch = true;
                 sampleUnit = unit || '日';
                 setInstanceTotal += minCount;
               });
             });
             if (!anyMatch) return;
-            const s = statsFor(wkMap);
+            const s = statsFor(wkMap, dayMap);
             const doseDisplay = set.drugs.map(d => bandDoses[d]).join(' + ');
             results.push({
               drug: set.name, doseDisplay, unit: sampleUnit, isSet: true, bandIdx,
@@ -1715,6 +1756,7 @@
       // Whatever remains in `index` after set-matching (or everything, if no
       // sets matched) is aggregated per drug×dose exactly as before.
       const remaining = new Map(); // "drug|dose" -> weekKey -> sum
+      const remainingByDay = new Map(); // "drug|dose" -> dateKey -> sum
       const remainingUnits = new Map(); // "drug|dose" -> Set(units)
       const remainingMeta = new Map(); // "drug|dose" -> {drug, dose}
       index.forEach((byDrug, dateKey) => {
@@ -1728,11 +1770,14 @@
               const gkey = drug + '|' + dose;
               if (!remaining.has(gkey)) {
                 remaining.set(gkey, new Map());
+                remainingByDay.set(gkey, new Map());
                 remainingUnits.set(gkey, new Set());
                 remainingMeta.set(gkey, { drug, dose });
               }
               const wkMap = remaining.get(gkey);
               wkMap.set(wk, (wkMap.get(wk) || 0) + daysVal * count);
+              const dayMap = remainingByDay.get(gkey);
+              dayMap.set(dateKey, (dayMap.get(dateKey) || 0) + daysVal * count);
               if (unit) remainingUnits.get(gkey).add(unit);
             });
           });
@@ -1757,7 +1802,7 @@
         if (DISCONTINUED_DRUGS.some(re => re.test(drug))) { suppressedDiscontinued++; return; }
         if (SET_ONLY_DRUGS.some(re => re.test(drug))) { suppressedSetOnly++; return; }
         const units = remainingUnits.get(key);
-        const s = statsFor(wkMap);
+        const s = statsFor(wkMap, remainingByDay.get(key));
         // unit: "日" (regular scheduled drugs) or "回" (頓服/PRN, dosed by count).
         // Falls back to "日" for plain numeric columns with no unit text at all.
         const unit = units.size === 1 ? [...units][0] : (units.size === 0 ? '日' : '混在');
